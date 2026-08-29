@@ -6,7 +6,7 @@
   <title>Status — Ukraine War Live</title>
   <meta name="description" content="Live health of the Ukraine War Live pipeline: last run per worker, feed successes and failures, events per day." />
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608291200" />
+  <link rel="stylesheet" href="/style.css?v=202608291230" />
 </head>
 <body>
   <header>
@@ -62,8 +62,8 @@
       let st, idx;
       try {
         [st, idx] = await Promise.all([
-          fetch(`${API}/status`, { cache: "no-store" }).then((r) => r.json()),
-          fetch(`${API}/archive/index.json`, { cache: "no-store" }).then((r) => r.json()),
+          fetch(`${API}/status?t=${Math.floor(Date.now()/45000)}`, { cache: "no-store" }).then((r) => r.json()),
+          fetch(`${API}/archive/index.json?t=${Math.floor(Date.now()/300000)}`, { cache: "no-store" }).then((r) => r.json()),
         ]);
       } catch (e) { document.getElementById("cards").innerHTML = '<div class="statcard"><div class="k">error</div><div class="v bad">offline</div></div>'; return; }
 

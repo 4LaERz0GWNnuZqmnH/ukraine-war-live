@@ -6,7 +6,7 @@
   <title>Today — Ukraine War Live</title>
   <meta name="description" content="A short automated daily situation report of the Russia-Ukraine war, generated from that day's machine-extracted events. Every day's report is kept." />
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608291200" />
+  <link rel="stylesheet" href="/style.css?v=202608291230" />
 </head>
 <body>
   <header>
@@ -60,7 +60,7 @@
 
     (async () => {
       try {
-        const idx = await fetch(`${API}/sitrep`, { cache: "no-store" }).then((r) => r.json());
+        const idx = await fetch(`${API}/sitrep?t=${Date.now()}`, { cache: "no-store" }).then((r) => r.json());
         const dates = (idx.dates || []).slice(0, 21);
         const list = document.getElementById("list");
         if (!dates.length) { list.innerHTML = '<p class="muted">No reports yet — the first is generated at 04:10 UTC.</p>'; return; }
