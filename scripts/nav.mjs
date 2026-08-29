@@ -11,6 +11,7 @@ const PAGES = [
   ["web/pages/build.html", "build"],
   ["web/pages/status.html", "status"],
   ["web/pages/about.html", "about"],
+  ["web/pages/donate.html", "donate"],
 ];
 
 function nav(cur) {
@@ -36,6 +37,7 @@ function nav(cur) {
       <span class="navsep">|</span>
       <span class="navgroup">
         <a href="/pages/about.html"${c("about")}>About</a>
+        <a href="/pages/donate.html"${c("donate")}>Donate</a>
       </span>
     </nav>`;
 }
