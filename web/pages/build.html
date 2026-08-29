@@ -47,37 +47,37 @@
     </p>
 
     <h2>1. The shape of the system</h2>
-    <pre style="overflow-x:auto"><code>RSS feeds (13)
-     │
-     ▼
-┌──────────────────────┐   ┌──────────────────────┐   ┌──────────────────────┐
-│ uwl-ingest-strikes   │   │ uwl-ingest-ground    │   │ uwl-ingest-frontline │
-│ Worker + Cron (2h)   │   │ Worker + Cron (2h)   │   │ Worker + Cron (6h)   │
-│ RSS → AI → dedup     │   │ RSS → AI → dedup     │   │ DeepStateMap GeoJSON │
-└─────────┬────────────┘   └─────────┬────────────┘   └─────────┬────────────┘
-          └───────────────┬──────────┘                          │
-                          ▼                                     ▼
-                 ┌───────────────────────────────────────────────────┐
-                 │           Cloudflare KV (one namespace)            │
-                 │  live:strikes  live:ground  archive:YYYY-MM-DD     │
-                 │  dedup_store   processed_urls  frontline:geojson   │
-                 │  status:*   runs_log   archive:index               │
-                 └───────────────────────┬───────────────────────────┘
-                                         ▼
-                          ┌────────────────────────────┐
-                          │  uwl-api  (Worker)         │
-                          │  api.ukraine.bugg.club     │
-                          │  /feed.json /archive/*     │
-                          │  /frontline.json /status   │
-                          └─────────────┬──────────────┘
+    <pre style="overflow-x:auto"><code>RSS feeds (13)                                    DeepStateMap
+   │                                                  │
+   ▼                                                  ▼
+┌────────────────────┐ ┌────────────────────┐ ┌────────────────────┐ ┌──────────────┐
+│ uwl-ingest-strikes │ │ uwl-ingest-ground  │ │ uwl-ingest-frontline│ │ uwl-sitrep   │
+│ Worker + Cron 2h   │ │ Worker + Cron 2h   │ │ Worker + Cron 6h   │ │ Cron 04:10   │
+│ RSS → AI → dedup   │ │ RSS → AI → dedup   │ │ current + history  │ │ 1 AI call/day│
+└─────────┬──────────┘ └─────────┬──────────┘ └─────────┬──────────┘ └──────┬───────┘
+          └───────────────┬──────┴───────────────┬──────┴────────────────┬──┘
+                          ▼                      ▼                       ▼
+        ┌──────────────────────────────────────────────────────────────────┐
+        │                 Cloudflare KV  (one namespace)                    │
+        │  live:strikes  live:ground   archive:&lt;pipeline&gt;:&lt;day&gt; (+ index)   │
+        │  dedup_store   processed_urls  frontline:geojson  frontline:snap:*│
+        │  sitrep:&lt;date&gt;  status:*  runs_log                                 │
+        └───────────────────────────────┬──────────────────────────────────┘
                                         ▼
-                          ┌────────────────────────────┐
-                          │  Cloudflare Pages          │
-                          │  ukraine.bugg.club         │
-                          │  static HTML + MapLibre GL │
-                          └────────────────────────────┘</code></pre>
+                    ┌──────────────────────────────────────────┐
+                    │  uwl-api  (Worker, edge-cached)          │
+                    │  api.ukraine.bugg.club                   │
+                    │  /feed.json /api/search /archive/*       │
+                    │  /frontline.json /frontline/history/*    │
+                    │  /sitrep /rss.xml /status /llms.txt      │
+                    └─────────────────┬────────────────────────┘
+                                      ▼
+                    ┌──────────────────────────────────────────┐
+                    │  Cloudflare Pages — ukraine.bugg.club     │
+                    │  static HTML + self-hosted MapLibre GL    │
+                    └──────────────────────────────────────────┘</code></pre>
     <p>
-      Four Workers, one KV namespace, one Pages project. Cron Triggers do the
+      Five Workers, one KV namespace, one Pages project. Cron Triggers do the
       scheduling; there is nothing to keep running and nothing to pay for at idle.
     </p>
 
@@ -90,9 +90,10 @@
       <tr><td>State</td><td>Workers KV</td><td>Key/value at the edge. Free tier 100k reads &amp; 1k writes/day; this system uses roughly 120 writes/day.</td></tr>
       <tr><td>Archive</td><td>KV (NDJSON per day)</td><td>R2 and Google Sheets both need a one-time manual enable; KV needed neither and holds this volume easily.</td></tr>
       <tr><td>Frontend</td><td>Cloudflare Pages</td><td>Free static hosting, automatic TLS, custom domains.</td></tr>
-      <tr><td>Map</td><td>MapLibre GL + OpenFreeMap</td><td>Both fully free and key-less. No Mapbox token, no tile bill.</td></tr>
-      <tr><td>Front line</td><td>DeepStateMap public API</td><td>Community OSINT map with a documented JSON endpoint.</td></tr>
-      <tr><td>Deploy</td><td>Wrangler + GitHub Actions</td><td>One command per Worker; a push to <code>main</code> redeploys everything.</td></tr>
+      <tr><td>Map</td><td>MapLibre GL (self-hosted) + OpenFreeMap tiles</td><td>Both free and key-less. No Mapbox token, no tile bill. The library is served from the site itself, not a CDN.</td></tr>
+      <tr><td>Front line</td><td>DeepStateMap public API</td><td>Community OSINT map with a documented JSON endpoint, including a snapshot history.</td></tr>
+      <tr><td>Oblast shapes</td><td>geoBoundaries UKR ADM1</td><td>Open admin-1 polygons, simplified in-repo to ~53 KB for per-oblast hover counts.</td></tr>
+      <tr><td>Deploy</td><td>Wrangler 4 + GitHub Actions (Node 22)</td><td>One command per Worker; a push to <code>main</code> redeploys everything.</td></tr>
     </table>
 
     <h2>3. The ingestion pipeline, step by step</h2>
@@ -144,16 +145,21 @@
       </li>
       <li>
         <strong>Cross-run dedup.</strong> Each surviving event gets two signatures:
-        a URL hash, and <code>type + 0.5&deg; grid cell + time bucket</code>
-        (1-hour buckets for strikes, 4-hour for territorial change). If either
-        signature is already in the KV key <code>dedup_store</code>, the event is
-        dropped; otherwise its signatures are added.
+        a URL hash, and a second one that depends on how good the coordinate is —
+        for a model-supplied point it is <code>type + 0.1&deg; grid cell + time
+        bucket</code> (1-hour buckets, 4-hour for territorial change and
+        diplomacy); for a gazetteer centroid or no coordinate it is
+        <code>type + normalised-headline hash + time bucket</code>, so a coarse
+        centroid can never collapse two genuinely different reports. If either
+        signature is already in the KV key <code>dedup_store</code> the event is
+        dropped. That store is pruned by age (30 days) and hard-capped at 40k keys.
       </li>
       <li>
         <strong>Archive.</strong> Kept events are appended as NDJSON — one JSON
-        object per line — to <code>archive:YYYY-MM-DD</code>, and a
-        <code>date&nbsp;&rarr;&nbsp;count</code> map at <code>archive:index</code>
-        is updated.
+        object per line — to <code>archive:&lt;pipeline&gt;:&lt;day&gt;</code>, with a
+        matching <code>day&nbsp;&rarr;&nbsp;count</code> index. Each pipeline only
+        writes its own keys, so the append is race-free; the API merges the two on
+        read.
       </li>
       <li>
         <strong>Live cache.</strong> The newest 200 events for this pipeline are
@@ -181,94 +187,118 @@
 
     <h2>5. The front-line layer</h2>
     <p>
-      A third Worker, <code>uwl-ingest-frontline</code>, runs every 6 hours. It
-      fetches <code>deepstatemap.live/api/history/last</code> — a ~600&nbsp;KB
-      GeoJSON of the current control map — and keeps only the polygons whose status
-      is <em>occupied</em>, plus Crimea and the pre-2022 ORDLO areas. DeepState's
+      <code>uwl-ingest-frontline</code> runs every 6 hours. It fetches
+      <code>deepstatemap.live/api/history/last</code> — a ~600&nbsp;KB GeoJSON of the
+      current control map — and keeps only the polygons whose status is
+      <em>occupied</em>, plus Crimea and the pre-2022 ORDLO areas. DeepState's
       satirical "territories" (Karelia, Ichkeria, and so on) and the
       liberated/dismissed polygons are filtered out. The trimmed FeatureCollection
       is stored at <code>frontline:geojson</code> and served, heavily cached, from
-      <code>/frontline.json</code>. The map draws it as a semi-transparent red fill
-      beneath the event markers. Front-line data is &copy; DeepStateMap.live,
-      CC&nbsp;BY-NC-SA&nbsp;4.0.
+      <code>/frontline.json</code>; the map draws it as a semi-transparent red fill
+      beneath the event markers. The same worker also keeps a weekly snapshot and,
+      the first time it runs, backfills snapshots for ~7/14/30/60/90&nbsp;days ago
+      from DeepState's public history list — that is what the map's "compare front
+      line to &lt;date&gt;" control draws as a blue underlay. Front-line data is
+      &copy;&nbsp;DeepStateMap.live, CC&nbsp;BY-NC-SA&nbsp;4.0.
     </p>
 
-    <h2>6. Storage model</h2>
+    <h2>6. The daily SITREP</h2>
+    <p>
+      <code>uwl-sitrep</code> fires once a day at 04:10&nbsp;UTC. It reads the
+      previous UTC day's archived events, sends a slimmed copy to Llama&nbsp;3.3&nbsp;70B
+      with an editor prompt, and stores the result — a one-line headline plus four
+      to seven grouped bullets — at <code>sitrep:&lt;date&gt;</code>. Reports are kept
+      indefinitely and shown on the <a href="/pages/today.html">Today</a> page,
+      newest first. It is one small model call per day, a few hundred neurons.
+    </p>
+
+    <h2>7. Storage model</h2>
     <p>One KV namespace holds everything:</p>
     <table>
       <tr><th>Key</th><th>Contents</th></tr>
       <tr><td><code>live:strikes</code>, <code>live:ground</code></td><td>Newest 200 events per pipeline (JSON array) — the map feed</td></tr>
-      <tr><td><code>archive:YYYY-MM-DD</code></td><td>Every kept event that day, NDJSON, uncapped</td></tr>
-      <tr><td><code>archive:index</code></td><td><code>{ "2026-08-29": 41, ... }</code></td></tr>
-      <tr><td><code>dedup_store</code></td><td>Signature &rarr; timestamp, 30-day window</td></tr>
-      <tr><td><code>processed_urls</code></td><td>URL hash &rarr; timestamp, 30-day window</td></tr>
-      <tr><td><code>frontline:geojson</code></td><td>Trimmed DeepStateMap FeatureCollection</td></tr>
+      <tr><td><code>archive:&lt;pipeline&gt;:YYYY-MM-DD</code></td><td>Every kept event that day, NDJSON, uncapped</td></tr>
+      <tr><td><code>archive:index:&lt;pipeline&gt;</code></td><td><code>{ "2026-08-29": 41, ... }</code></td></tr>
+      <tr><td><code>dedup_store</code>, <code>processed_urls</code></td><td>Signature / URL hash &rarr; timestamp; 30-day window, 40k-key cap</td></tr>
+      <tr><td><code>frontline:geojson</code>, <code>frontline:snap:&lt;date&gt;</code></td><td>Current + historical occupied-territory FeatureCollections</td></tr>
+      <tr><td><code>sitrep:&lt;date&gt;</code>, <code>sitrep:index</code></td><td>Daily digests</td></tr>
       <tr><td><code>status:*</code>, <code>runs_log</code></td><td>Health / last-run diagnostics</td></tr>
     </table>
 
-    <h2>7. The read API</h2>
+    <h2>8. The read API</h2>
     <p>
-      <code>uwl-api</code> is a fourth Worker on <code>api.ukraine.bugg.club</code>.
-      It has the KV binding and does no writes. The ingest Workers have no public
-      URL at all; the API Worker invokes them for manual runs over a
+      <code>uwl-api</code> is the fifth Worker, on <code>api.ukraine.bugg.club</code>.
+      It has the KV binding and does no writes; idempotent GETs are cached at the
+      Cloudflare edge (<code>caches.default</code>). The ingest Workers have no
+      public URL at all — the API Worker invokes them for manual runs over a
       <strong>service binding</strong> (Worker-to-Worker, no internet hop).
     </p>
     <table>
       <tr><th>Endpoint</th><th>Returns</th></tr>
-      <tr><td><code>GET /feed.json</code></td><td>Merged strikes + ground live events, newest first</td></tr>
+      <tr><td><code>GET /feed.json</code></td><td>Merged strikes + ground live events, newest first, with a <code>meta</code> block of real last-run times</td></tr>
       <tr><td><code>GET /api/events?type=&amp;tier=&amp;since=</code></td><td>Same, filtered</td></tr>
-      <tr><td><code>GET /archive/index.json</code></td><td>Date &rarr; count for the whole archive</td></tr>
-      <tr><td><code>GET /archive/YYYY-MM-DD</code></td><td>That day's events as NDJSON (downloadable)</td></tr>
-      <tr><td><code>GET /frontline.json</code></td><td>Occupied-territory GeoJSON</td></tr>
-      <tr><td><code>GET /status</code></td><td>Last run per pipeline + last 10 run logs</td></tr>
-      <tr><td><code>GET /llms.txt</code></td><td>Machine-readable summary of the above</td></tr>
+      <tr><td><code>GET /api/search?q=&amp;from=&amp;to=</code></td><td>Substring search over the archive</td></tr>
+      <tr><td><code>GET /archive/index.json</code> · <code>/archive/YYYY-MM-DD</code></td><td>Day &rarr; count · that day's events as NDJSON</td></tr>
+      <tr><td><code>GET /frontline.json</code></td><td>Current occupied-territory GeoJSON</td></tr>
+      <tr><td><code>GET /frontline/history</code> · <code>/frontline/history/YYYY-MM-DD</code></td><td>Snapshot list · one past snapshot</td></tr>
+      <tr><td><code>GET /sitrep</code> · <code>/sitrep/YYYY-MM-DD</code></td><td>Index + latest digest · one digest</td></tr>
+      <tr><td><code>GET /rss.xml</code></td><td>Last 50 events as RSS 2.0</td></tr>
+      <tr><td><code>GET /status</code> · <code>/llms.txt</code></td><td>Pipeline health · machine-readable summary</td></tr>
       <tr><td><code>POST /admin/run?pipeline=&amp;key=</code></td><td>Fire a pipeline now (key-gated)</td></tr>
     </table>
 
-    <h2>8. The frontend</h2>
+    <h2>9. The frontend</h2>
     <p>
       Plain HTML, one CSS file, one JS file — no framework, no build step. MapLibre
-      GL and its stylesheet load from a CDN; the base map is OpenFreeMap's
-      key-less "Liberty" style. The script fetches <code>/feed.json</code> and
-      <code>/frontline.json</code>, plots markers coloured by confidence tier, and
-      offers time-window and per-type filters plus an occupied-area toggle. The map
-      is treated as progressive enhancement: if WebGL or the tile server is
-      unavailable, the sidebar — counts, per-type tally, and a list of events with
-      no mapped location — still renders. The feed refreshes every 5 minutes
-      client-side; the data itself changes every 2 hours.
+      GL is served from the site itself (<code>web/vendor/</code>), not a CDN; the
+      base map is OpenFreeMap's key-less "Liberty" style. The script plots markers
+      coloured by confidence tier and offers filters by time window, event type and
+      confidence tier, a time scrubber that plays events forward, per-oblast event
+      counts on hover, the front-line compare control, and toggles for the
+      occupied area and the independent-blog markers. The map is progressive
+      enhancement: if WebGL or the tile server is unavailable, the sidebar — counts,
+      per-type tally, and a list of events with no mapped location — still renders.
+      Other pages: <a href="/pages/today.html">Today</a> (SITREPs),
+      <a href="/pages/chronology.html">Chronology</a> (with archive search),
+      <a href="/pages/status.html">Status</a>, and a chrome-less
+      <code>/embed.html</code> for iframes. The feed refreshes every 10 minutes
+      client-side; the data changes every 2 hours. A <code>_headers</code> file
+      sets a Content-Security-Policy and the usual hardening headers.
     </p>
 
-    <h2>9. Hosting and DNS</h2>
+    <h2>10. Hosting and DNS</h2>
     <ul>
       <li><code>ukraine.bugg.club</code> &rarr; Cloudflare Pages custom domain (CNAME to the <code>*.pages.dev</code> project).</li>
       <li><code>api.ukraine.bugg.club</code> &rarr; a Workers custom domain on the <code>uwl-api</code> Worker (Cloudflare manages the record and cert).</li>
-      <li>The ingest Workers publish to no hostname; they exist only as cron jobs and service-binding targets.</li>
+      <li>The other four Workers publish to no hostname; they exist only as cron jobs and service-binding targets.</li>
+      <li>A <code>_redirects</code> file 302s <code>/feed.json</code> and the other API paths from the site domain to the API Worker.</li>
     </ul>
 
-    <h2>10. Cost</h2>
+    <h2>11. Cost</h2>
     <table>
       <tr><th>Component</th><th>Free allowance</th><th>This site's usage</th></tr>
       <tr><td>Workers requests</td><td>100,000 / day</td><td>a few thousand</td></tr>
-      <tr><td>Cron Triggers</td><td>included</td><td>~30 invocations / day</td></tr>
-      <tr><td>Workers AI</td><td>10,000 neurons / day</td><td>~24 extraction calls / day</td></tr>
-      <tr><td>KV writes</td><td>1,000 / day</td><td>~120 / day</td></tr>
-      <tr><td>KV reads</td><td>100,000 / day</td><td>well under</td></tr>
+      <tr><td>Cron Triggers</td><td>included</td><td>~29 invocations / day</td></tr>
+      <tr><td>Workers AI</td><td>10,000 neurons / day</td><td>~24 extraction calls + 1 SITREP / day</td></tr>
+      <tr><td>KV writes</td><td>1,000 / day</td><td>~150 / day</td></tr>
+      <tr><td>KV reads</td><td>100,000 / day</td><td>well under (edge-cached API)</td></tr>
       <tr><td>Pages</td><td>unlimited static requests</td><td>&mdash;</td></tr>
       <tr><td>Domain</td><td>&mdash;</td><td>~$0.90 / month at cost</td></tr>
     </table>
     <p>Everything runs inside the free tiers. The only hard money is the domain.</p>
 
-    <h2>11. Deployment</h2>
+    <h2>12. Deployment</h2>
     <p>
       Each Worker is a <code>wrangler.toml</code> plus a <code>src/index.ts</code>.
       Secrets (the manual-run key) are set once with <code>wrangler secret put</code>
-      and survive redeploys. A GitHub Actions workflow runs a type-check and then
-      <code>wrangler deploy</code> for each Worker and <code>wrangler pages deploy</code>
-      for the site on every push to <code>main</code>. Cron schedules are declared
-      in the Worker configs and registered automatically on deploy.
+      and survive redeploys. A GitHub Actions workflow (Node&nbsp;22, wrangler&nbsp;4)
+      runs a type-check and then <code>wrangler deploy</code> for each of the five
+      Workers and <code>wrangler pages deploy</code> for the site on every push to
+      <code>main</code>. Cron schedules are declared in the Worker configs and
+      registered automatically on deploy.
     </p>
 
-    <h2>12. What this approach gets wrong</h2>
+    <h2>13. What this approach gets wrong</h2>
     <ul>
       <li>
         <strong>Headline-only extraction hallucinates.</strong> The model can
@@ -279,12 +309,15 @@
       <li>
         <strong>Geolocation is coarse.</strong> A gazetteer centroid is a town, not
         a street. Events at places not in the table stay unmapped and are listed in
-        the sidebar instead.
+        the sidebar; markers placed from the gazetteer are ringed white and marked
+        "(approx. location)" in their popup.
       </li>
       <li>
-        <strong>Deduplication is lossy both ways.</strong> It can drop a genuinely
-        distinct event that shares a grid cell and hour, and it can keep two
-        write-ups of the same strike that describe it differently.
+        <strong>Deduplication is still lossy.</strong> The headline-hash signature
+        stops a coarse centroid from collapsing distinct events, but two outlets
+        writing up the same strike with different headlines can both survive, and a
+        genuinely distinct model-located event in the same 0.1&deg; cell and hour can
+        still be dropped.
       </li>
       <li>
         <strong>Coverage follows the feeds.</strong> If an event is not in one of
@@ -300,17 +333,20 @@
       <li>
         <strong>The front line lags.</strong> DeepStateMap updates a few times a
         day and this site re-pulls every 6 hours, so the red area can be up to
-        several hours stale.
+        several hours stale. The comparison snapshots are the nearest available
+        DeepState revision to each target date, not that exact date.
       </li>
     </ul>
 
-    <h2>13. Credits</h2>
+    <h2>14. Credits &amp; licence</h2>
     <ul>
-      <li>Front-line polygons: <a href="https://deepstatemap.live" target="_blank" rel="noopener">DeepStateMap.live</a> (CC BY-NC-SA 4.0)</li>
+      <li>Front-line polygons &amp; history: <a href="https://deepstatemap.live" target="_blank" rel="noopener">DeepStateMap.live</a> (CC BY-NC-SA 4.0)</li>
       <li>Base map: <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> / OpenMapTiles / &copy; OpenStreetMap contributors</li>
-      <li>Map library: <a href="https://maplibre.org" target="_blank" rel="noopener">MapLibre GL JS</a></li>
+      <li>Oblast shapes: <a href="https://www.geoboundaries.org" target="_blank" rel="noopener">geoBoundaries</a> (UKR ADM1, open data)</li>
+      <li>Map library: <a href="https://maplibre.org" target="_blank" rel="noopener">MapLibre GL JS</a> (BSD-3-Clause)</li>
       <li>News: BBC, The Guardian, NYT, Al Jazeera, The Kyiv Independent, Ukrainska Pravda, Ukrinform, Euromaidan Press, European Pravda, Militarnyi, ArmyInform, TASS</li>
       <li>Concept: <a href="https://iranwarlive.com" target="_blank" rel="noopener">IranWarLive</a></li>
+      <li>This project is released under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a> — reuse for non-commercial purposes with attribution, share alike (consistent with the DeepStateMap data licence).</li>
     </ul>
   </div>
 </body>

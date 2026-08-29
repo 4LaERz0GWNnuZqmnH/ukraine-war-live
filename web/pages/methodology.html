@@ -63,12 +63,17 @@
         left without coordinates, a static gazetteer of ~110 places (oblast centres,
         front-line towns, Russian target cities) fills in a settlement-centroid position.</li>
       <li><b>Deduplication.</b> Two signatures per event — an exact source-URL hash, and
-        <code>event type + 0.5° grid cell + time bucket</code> (1&nbsp;hour for strikes,
-        4&nbsp;hours for territorial change). If either is already seen, the event is
-        dropped. Signatures are retained for 30&nbsp;days.</li>
+        a second one that adapts to how good the coordinate is: for a model-supplied
+        point it is <code>event type + 0.1° grid cell + time bucket</code>; for a
+        gazetteer centroid or no coordinate it is <code>event type + normalised-headline
+        hash + time bucket</code>, so an approximate location cannot merge two genuinely
+        different reports. Buckets are 1&nbsp;hour, or 4&nbsp;hours for territorial change
+        and diplomacy. If either signature is already seen the event is dropped.
+        Signatures are kept for 30&nbsp;days, with a 40,000-key cap.</li>
       <li><b>Archive.</b> Surviving events are appended as NDJSON — one JSON object per
-        line — to a per-day key in Cloudflare KV, with a running date&rarr;count index.
-        This is the uncapped canonical record, downloadable at <code>/archive/&lt;date&gt;</code>.</li>
+        line — to a per-pipeline, per-day key in Cloudflare KV, with a running
+        day&rarr;count index. This is the uncapped canonical record, downloadable at
+        <code>/archive/&lt;date&gt;</code>.</li>
       <li><b>Distribution.</b> A merged JSON snapshot of the most recent 200 events per
         pipeline is cached to Cloudflare KV and served at <code>/feed.json</code>. No
         alerting, no social channels.</li>
@@ -82,7 +87,7 @@
       <tr><td>Official — Ukraine</td><td>Attributed to Ukraine's General Staff, Air Force, or regional officials</td><td>blue</td></tr>
       <tr><td>Official — Russia</td><td>Attributed to the Russian Ministry of Defence or government</td><td>violet</td></tr>
       <tr><td>News wire</td><td>A single mainstream outlet, not attributed to either side</td><td>amber</td></tr>
-      <tr><td>OSINT</td><td>Geolocated or analyst-sourced (e.g. ISW)</td><td>grey</td></tr>
+      <tr><td>OSINT</td><td>Geolocated or analyst-sourced (e.g. Militarnyi, DeepState)</td><td>grey</td></tr>
       <tr><td>State media</td><td>Sourced to TASS / RIA / Sputnik and not independently confirmed</td><td>red</td></tr>
     </table>
 
@@ -94,28 +99,39 @@
       naval action, and diplomacy, which the main pipeline handles.</p>
 
     <h2>4. Front-line layer</h2>
-    <p>The red occupied-territory shading on the map is a third worker that pulls the
-      current control map from <a href="https://deepstatemap.live" target="_blank" rel="noopener">DeepStateMap.live</a>
+    <p>The red occupied-territory shading is a third worker that pulls the current control
+      map from <a href="https://deepstatemap.live" target="_blank" rel="noopener">DeepStateMap.live</a>
       every 6&nbsp;hours, keeps only the occupied / Crimea / ORDLO polygons, and caches
-      the trimmed GeoJSON. It can be several hours stale and is
+      the trimmed GeoJSON. The same worker also keeps a weekly snapshot and backfills
+      ~7/14/30/60/90-day-old ones from DeepState's public history, which power the map's
+      "compare front line to a past date" control. It can be several hours stale and is
       &copy;&nbsp;DeepStateMap.live, CC&nbsp;BY-NC-SA&nbsp;4.0. It is independent of the
       event pipeline.</p>
 
-    <h2>5. Data architecture</h2>
+    <h2>5. Daily situation report</h2>
+    <p>Once a day a fourth worker sends the previous day's archived events to the same
+      language model and stores a short digest — one headline plus a few grouped bullets.
+      Reports are kept indefinitely on the <a href="/pages/today.html">Today</a> page. Like
+      everything else here it summarises only the machine-extracted events; it adds no
+      outside knowledge.</p>
+
+    <h2>6. Data architecture</h2>
     <ul>
       <li><b>Cloudflare KV</b> (one namespace) — deduplication signatures and processed-URL
-        set (30-day window), the 200-event live feed per pipeline, the per-day NDJSON
-        archive, the front-line GeoJSON, and run diagnostics.</li>
+        set (30-day window, 40k-key cap), the 200-event live feed per pipeline, the
+        per-pipeline per-day NDJSON archive, current + historical front-line GeoJSON,
+        the daily SITREPs, and run diagnostics.</li>
       <li><b>Caps</b> — 20 strikes/run, 12 ground/run, 200 events per pipeline in the live
         feed; the archive is uncapped.</li>
-      <li><b>Machine-readable</b> — <code>/feed.json</code>,
-        <code>/api/events?type=&amp;tier=&amp;since=</code>,
-        <code>/archive/index.json</code>, <code>/archive/&lt;date&gt;</code>,
-        <code>/frontline.json</code>, <code>/status</code>, <code>/llms.txt</code>.</li>
+      <li><b>Machine-readable</b> — <code>/feed.json</code>, <code>/api/events</code>,
+        <code>/api/search</code>, <code>/archive/index.json</code>,
+        <code>/archive/&lt;date&gt;</code>, <code>/frontline.json</code>,
+        <code>/frontline/history</code>, <code>/sitrep</code>, <code>/rss.xml</code>,
+        <code>/status</code>, <code>/llms.txt</code>.</li>
       <li>Full build details: <a href="/pages/build.html">How it's built</a>.</li>
     </ul>
 
-    <h2>6. Editorial policy</h2>
+    <h2>7. Editorial policy</h2>
     <p>The platform is politically agnostic by construction. The extractor records
       attacker, target, and location regardless of the source's alignment, and applies
       the same confidence rules to every side. There is no affiliation with any
@@ -123,14 +139,17 @@
       trackers. Only public officials and official spokespeople are named; no private
       individuals.</p>
 
-    <h2>7. Known limitations</h2>
+    <h2>8. Known limitations</h2>
     <ul>
       <li>Headline-only extraction can misplace, conflate, or misattribute events. The
         temperature, hard caps, schema validation, and "never invent" instructions reduce
         this; they do not eliminate it.</li>
-      <li>Coordinates are settlement-level at best and are omitted when uncertain.</li>
-      <li>Deduplication is lossy in both directions — it can miss near-duplicates and can
-        occasionally merge two distinct events.</li>
+      <li>Coordinates are settlement-level at best and are omitted when uncertain; a
+        marker placed from the gazetteer is ringed white and noted as approximate.</li>
+      <li>Deduplication is still lossy: the headline-hash signature stops an approximate
+        location from merging distinct events, but two outlets writing the same strike
+        with different headlines can both survive, and a distinct model-located event in
+        the same 0.1° cell and hour can still be dropped.</li>
       <li>Casualty figures are numbers announced by one side (Ukraine or Russia),
         passed through unverified. They are shown with whoever reported them and are
         never added together into an overall total.</li>
@@ -138,9 +157,13 @@
         reported events are simply absent.</li>
     </ul>
 
-    <h2>8. Corrections &amp; reuse</h2>
-    <p>To flag an error, open an issue on the project repository. Data is provided as-is
-      for non-commercial reuse with attribution; see the repository for the licence.</p>
+    <h2>9. Corrections &amp; reuse</h2>
+    <p>To flag an error, open an issue on the
+      <a href="https://github.com/4LaERz0GWNnuZqmnH/ukraine-war-live" target="_blank" rel="noopener">project repository</a>.
+      The code and data are released under
+      <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC&nbsp;BY-NC-SA&nbsp;4.0</a>
+      — non-commercial reuse with attribution, share alike — consistent with the
+      DeepStateMap front-line data licence.</p>
   </div>
 </body>
 </html>
