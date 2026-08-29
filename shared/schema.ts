@@ -18,8 +18,7 @@ export type EventType =
   | "ground_engagement"
   | "territorial_change"
   | "casualty_report"
-  | "diplomatic"
-  | "pow_exchange";
+  | "diplomatic";
 
 export interface WarEvent {
   id: string;
@@ -50,7 +49,7 @@ export interface WarEvent {
 const TYPES = new Set<string>([
   "missile_strike", "drone_strike", "air_defense", "deep_strike_ru", "naval",
   "energy_infra", "ground_engagement", "territorial_change", "casualty_report",
-  "diplomatic", "pow_exchange",
+  "diplomatic",
 ]);
 const TIERS = new Set<string>([
   "high", "official_ua", "official_ru", "wire", "osint", "state_media",

@@ -22,7 +22,6 @@ const TYPES = [
   ["territorial_change", "Territorial change"],
   ["casualty_report", "Casualty reports"],
   ["diplomatic", "Diplomacy"],
-  ["pow_exchange", "POW exchanges"],
 ];
 const TYPE_LABEL = Object.fromEntries(TYPES);
 
@@ -38,9 +37,7 @@ let frontlineGeo = null;
 let historyGeo = null;
 let showFrontline = true;
 let showBlogs = true;
-let showOblasts = false;
 let BLOGS = null;
-let OBLASTS = null;
 let playTimer = null;
 let pendingFocus = null; // event id from #event=… to fly to once data + map are ready
 
@@ -79,7 +76,6 @@ function init() {
   load();
   loadFrontline();
   loadBlogs();
-  loadOblasts();
   loadHistoryList();
   setInterval(load, 10 * 60 * 1000);
   setInterval(loadFrontline, 3 * 60 * 60 * 1000);
@@ -138,23 +134,6 @@ function initMap() {
         type: "line",
         source: "frontline",
         paint: { "line-color": "#7a1f14", "line-width": 0.7, "line-opacity": 0.55 },
-      });
-
-      // oblast hit-test layer (near-invisible fill) + outline
-      map.addSource("oblasts", { type: "geojson", data: fc([]), generateId: true });
-      map.addLayer({
-        id: "oblast-fill",
-        type: "fill",
-        source: "oblasts",
-        layout: { visibility: "none" },
-        paint: { "fill-color": "#8b96ad", "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.18, 0.02] },
-      });
-      map.addLayer({
-        id: "oblast-line",
-        type: "line",
-        source: "oblasts",
-        layout: { visibility: "none" },
-        paint: { "line-color": "#8b96ad", "line-width": 0.6, "line-opacity": 0.5 },
       });
 
       // events — same-location reports are pre-merged into one marker (see
@@ -244,14 +223,12 @@ function initMap() {
         map.on("mouseenter", ly, () => (map.getCanvas().style.cursor = "pointer"));
         map.on("mouseleave", ly, () => (map.getCanvas().style.cursor = ""));
       }
-      wireOblastHover();
 
       mapReady = true;
       renderMap();
       renderFrontline();
       renderHistory();
       renderBlogs();
-      renderOblasts();
       maybeFocusEvent();
     });
   } catch (e) {
@@ -404,8 +381,6 @@ function wireToggles() {
   if (f) { f.checked = showFrontline; f.addEventListener("change", () => { showFrontline = f.checked; renderFrontline(); renderHistory(); }); }
   const b = document.getElementById("ly_blogs");
   if (b) { b.checked = showBlogs; b.addEventListener("change", () => { showBlogs = b.checked; setBlogVisibility(); }); }
-  const o = document.getElementById("ly_oblasts");
-  if (o) o.addEventListener("change", () => { showOblasts = o.checked; renderOblasts(); });
 }
 
 const BLOG_LAYERS = ["blog-markers", "blog-clusters", "blog-cluster-count"];
@@ -585,15 +560,6 @@ async function loadBlogs() {
   } catch (err) { console.warn("blogs load failed", err); }
 }
 
-async function loadOblasts() {
-  try {
-    const r = await fetch("/oblasts.json", { cache: "default" });
-    OBLASTS = await r.json();
-    if (mapReady && map.getSource("oblasts")) map.getSource("oblasts").setData(OBLASTS);
-    renderOblasts();
-  } catch (err) { console.warn("oblasts load failed", err); }
-}
-
 /* ----------------------------------------------------------------- filter -- */
 
 function activeEvents() {
@@ -738,7 +704,6 @@ function renderMap() {
     };
   });
   map.getSource("events").setData(fc(feats));
-  renderOblasts();
 }
 
 function renderFrontline() {
@@ -759,63 +724,6 @@ function renderBlogs() {
   }));
   map.getSource("blogs").setData(fc(feats));
   setBlogVisibility();
-}
-
-/* per-oblast event counts ------------------------------------------------- */
-
-function pointInRing(lon, lat, ring) {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
-    if (((yi > lat) !== (yj > lat)) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-function pointInFeature(lon, lat, geom) {
-  const polys = geom.type === "MultiPolygon" ? geom.coordinates : [geom.coordinates];
-  for (const poly of polys) {
-    if (!pointInRing(lon, lat, poly[0])) continue;
-    let hole = false;
-    for (let k = 1; k < poly.length; k++) if (pointInRing(lon, lat, poly[k])) { hole = true; break; }
-    if (!hole) return true;
-  }
-  return false;
-}
-let oblastCounts = {};
-function renderOblasts() {
-  if (!mapReady || !map.getLayer("oblast-fill")) return;
-  const vis = showOblasts ? "visible" : "none";
-  map.setLayoutProperty("oblast-fill", "visibility", vis);
-  map.setLayoutProperty("oblast-line", "visibility", vis);
-  if (!showOblasts || !OBLASTS) return;
-  oblastCounts = {};
-  const evs = activeEvents().filter((e) => e.lat != null);
-  for (const f of OBLASTS.features) {
-    let n = 0;
-    for (const e of evs) if (pointInFeature(e.lon, e.lat, f.geometry)) n++;
-    oblastCounts[f.properties.name] = n;
-  }
-}
-function wireOblastHover() {
-  let hoverId = null;
-  const tip = document.getElementById("oblast-tip");
-  map.on("mousemove", "oblast-fill", (e) => {
-    if (!showOblasts) return;
-    const f = e.features[0];
-    if (hoverId !== null) map.setFeatureState({ source: "oblasts", id: hoverId }, { hover: false });
-    hoverId = f.id;
-    if (hoverId != null) map.setFeatureState({ source: "oblasts", id: hoverId }, { hover: true });
-    const name = f.properties.name;
-    tip.textContent = `${name}: ${oblastCounts[name] ?? 0} in window`;
-    tip.hidden = false;
-    tip.style.left = e.point.x + 12 + "px";
-    tip.style.top = e.point.y + 12 + "px";
-  });
-  map.on("mouseleave", "oblast-fill", () => {
-    if (hoverId !== null) map.setFeatureState({ source: "oblasts", id: hoverId }, { hover: false });
-    hoverId = null;
-    document.getElementById("oblast-tip").hidden = true;
-  });
 }
 
 /* ---------------------------------------------------------------- popups -- */

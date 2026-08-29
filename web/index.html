@@ -14,7 +14,7 @@
   <meta property="og:image" content="https://ukraine.bugg.club/og.svg" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="stylesheet" href="/vendor/maplibre-gl.css?v=471" />
-  <link rel="stylesheet" href="/style.css?v=202608302130" />
+  <link rel="stylesheet" href="/style.css?v=202608302300" />
 </head>
 <body>
   <header>
@@ -47,7 +47,6 @@
   <main>
     <div id="map"></div>
     <div id="map-msg" hidden></div>
-    <div id="oblast-tip" hidden></div>
     <button id="sbtoggle" type="button" aria-label="Collapse panel" title="Collapse panel">&gt;&gt;</button>
 
     <div id="scrubber">
@@ -74,7 +73,6 @@
         <div class="layers">
           <label><input type="checkbox" id="ly_frontline" checked> <span class="swatch" style="background:#c0392b"></span> Russian-occupied area</label>
           <label><input type="checkbox" id="ly_blogs" checked> <span class="swatch ring" style="border-color:#2dd4bf"></span> Independent blogs</label>
-          <label><input type="checkbox" id="ly_oblasts"> <span class="swatch ring" style="border-color:#8b96ad"></span> Oblast event counts</label>
         </div>
         <label class="cmp">Compare front line to
           <select id="fl-compare"><option value="">— off —</option></select>
@@ -112,6 +110,6 @@
   </footer>
 
   <script src="/vendor/maplibre-gl.js?v=471"></script>
-  <script src="/app.js?v=202608302130"></script>
+  <script src="/app.js?v=202608302300"></script>
 </body>
 </html>

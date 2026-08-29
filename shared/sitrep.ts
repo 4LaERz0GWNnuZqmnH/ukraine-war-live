@@ -17,7 +17,7 @@ Rules:
 - Summarise ONLY what is in the input. Do not add outside knowledge or invent detail.
 - Group related events (air attacks & air defence; front-line ground action &
   territorial change; Ukrainian deep strikes inside Russia; energy infrastructure;
-  naval/Black Sea; diplomacy & prisoner exchanges). One bullet per group that has activity.
+  naval/Black Sea; diplomacy). One bullet per group that has activity.
 - Name places and any explicit figures. Attribute claims to who made them
   ("Ukraine's Air Force said...", "Russia's MoD claimed..."). Casualty numbers are
   claims, never present them as confirmed.

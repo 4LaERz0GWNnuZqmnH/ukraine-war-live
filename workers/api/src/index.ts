@@ -57,7 +57,7 @@ never summed into a total.
 
 ## Event types
 missile_strike, drone_strike, air_defense, deep_strike_ru, naval, energy_infra,
-ground_engagement, territorial_change, casualty_report, diplomatic, pow_exchange
+ground_engagement, territorial_change, casualty_report, diplomatic
 
 ## Confidence tiers
 high, official_ua, official_ru, wire, osint, state_media

@@ -25,7 +25,7 @@ workers/
   sitrep/           cron 10 4    — one AI call over yesterday's archive
   api/              read API on api.ukraine.bugg.club (edge-cached)
 web/           static site + self-hosted MapLibre (Cloudflare Pages)
-scripts/       nav.mjs (regenerate the menu), simplify-oblasts.mjs
+scripts/       nav.mjs (menu), build-gazetteer.mjs, bootstrap.mjs
 .github/workflows/deploy.yml   push to main → typecheck + deploy everything
 ```
 

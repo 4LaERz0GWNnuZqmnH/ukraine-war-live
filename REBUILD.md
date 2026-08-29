@@ -35,10 +35,7 @@ Ukraine site unchanged.
    - a locally-committed GeoJSON polygon the operator maintains by hand;
    - none — drop the layer.
    (DeepStateMap)
-6. **Admin-1 polygons** for the per-region hover counts — the
-   [geoBoundaries](https://www.geoboundaries.org) ISO-3 code for the country, or
-   "disable the oblast layer". (`UKR`)
-7. **Deploy target** — your own Cloudflare account (required) and whether CI runs
+6. **Deploy target** — your own Cloudflare account (required) and whether CI runs
    from a GitHub fork.
 
 Write the answers into a short `PROJECT.md` in the new repo so the choices are
@@ -77,7 +74,6 @@ recorded.
 | `shared/schema.ts` | Set `BBOX` to the operator's bounding box. Review the `event_type` enum — rename/extend for the conflict if needed, and keep `prompts.ts` in sync. |
 | `shared/prompts.ts` | Update the actor framing (who attacks whom), the place-name examples, and any Ukraine/Russia-specific tier rules. Keep the "never invent URLs/coordinates", temperature, and strict-JSON-schema instructions **verbatim**. |
 | `shared/frontline.ts` | Only if the control-map source changes. Swap the fetch URLs and the feature filter. If dropping the layer, also remove the `ingest-frontline` worker and its `[[services]]` binding in `workers/api`. |
-| `web/oblasts.json` | Regenerate: download geoBoundaries ADM1 for the new ISO-3, then `node scripts/simplify-oblasts.mjs <input.geojson> web/oblasts.json`. Update the `NAME()` map in that script for the new region names. Delete the file and the `ly_oblasts` control to disable. |
 | `web/*.html`, `web/pages/*.html` | Site name, `<title>`, meta descriptions, the About / Methodology / build copy, accent colour in `web/style.css`. Run `node scripts/nav.mjs` after any nav change. |
 | `web/_headers` | `connect-src` / `img-src` in the CSP must list your API host, your tile host, and your control-map host — nothing else. |
 | `web/_redirects` | Point the `/feed.json`, `/api/*`, etc. 302s at your API hostname. |
@@ -153,9 +149,8 @@ line loads (if kept), the Today tab fills in after the first `sitrep` run.
 ## 6. Licence obligations you inherit
 
 - **MapLibre GL JS** (BSD-3-Clause), **OpenFreeMap / OpenMapTiles / © OpenStreetMap
-  contributors**, **geoBoundaries** (open data), **Llama 3.3** (Llama Community
-  Licence — "Built with Llama" notice) — keep the attributions in the build /
-  about pages.
+  contributors**, **Llama 3.3** (Llama Community Licence — "Built with Llama"
+  notice) — keep the attributions in the build / about pages.
 - **DeepStateMap is CC BY-NC-SA 4.0.** If you keep that layer, your whole project
   must stay non-commercial, attributed, and share-alike — see this repo's
   `LICENSE`. If you swap it out for a differently-licensed control map or your
