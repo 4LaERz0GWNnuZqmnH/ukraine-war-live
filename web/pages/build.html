@@ -6,7 +6,7 @@
   <title>How this site was built — Ukraine War Live</title>
   <meta name="description" content="A detailed technical write-up of how Ukraine War Live is built: Cloudflare Workers, cron triggers, Workers AI extraction, KV storage, and a static MapLibre frontend, for essentially the price of a domain name." />
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608301730" />
+  <link rel="stylesheet" href="/style.css?v=202608302000" />
 </head>
 <body>
   <header>
@@ -369,10 +369,10 @@
         <strong>Geolocation is coarse.</strong> A gazetteer centroid is a town, not
         a street. Events at places not in the table stay unmapped and are listed in
         the sidebar; markers placed from the gazetteer are ringed white and marked
-        "(approx. location)" in their popup. Several events at one settlement are
-        fanned onto a small fixed ring (~1.5&nbsp;km) so they don't stack: below the
-        cluster zoom they still merge into one "&times;N" badge, above it they are
-        separate dots.
+        "(approx. location)" in their popup. Events that resolve to the same
+        settlement (within ~1.5&nbsp;km) are merged client-side into one marker
+        carrying a count; clicking it opens a list of the individual reports. That
+        avoids scattering markers across a city they have no street address in.
       </li>
       <li>
         <strong>Deduplication trades precision for fewer near-duplicates.</strong>

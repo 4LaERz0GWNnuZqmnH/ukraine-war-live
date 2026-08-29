@@ -157,8 +157,14 @@ function initMap() {
         paint: { "line-color": "#8b96ad", "line-width": 0.6, "line-opacity": 0.5 },
       });
 
-      // events — clustered below zoom 10
-      map.addSource("events", { type: "geojson", data: fc([]), cluster: true, clusterMaxZoom: 9, clusterRadius: 46 });
+      // events — same-location reports are pre-merged into one marker (see
+      // groupNearby); MapLibre then clusters those markers below zoom 10.
+      map.addSource("events", {
+        type: "geojson", data: fc([]), cluster: true, clusterMaxZoom: 9, clusterRadius: 46,
+        clusterProperties: {
+          evtotal: ["+", ["case", [">", ["get", "grouped"], 0], ["get", "grouped"], 1]],
+        },
+      });
       map.addLayer({
         id: "clusters", type: "circle", source: "events", filter: ["has", "point_count"],
         paint: {
@@ -172,7 +178,10 @@ function initMap() {
       });
       map.addLayer({
         id: "cluster-count", type: "symbol", source: "events", filter: ["has", "point_count"],
-        layout: { "text-field": ["concat", "×", ["get", "point_count_abbreviated"]], "text-font": ["Noto Sans Bold"], "text-size": 12, "text-allow-overlap": true },
+        layout: {
+          "text-field": ["concat", "×", ["to-string", ["coalesce", ["get", "evtotal"], ["get", "point_count"]]]],
+          "text-font": ["Noto Sans Bold"], "text-size": 12, "text-allow-overlap": true,
+        },
         paint: { "text-color": "#f5a623", "text-translate": [-15, 0] },
       });
       map.addLayer({
@@ -185,9 +194,21 @@ function initMap() {
           "circle-opacity": 0.92,
         },
       });
+      map.addLayer({
+        id: "event-count", type: "symbol", source: "events",
+        filter: ["all", ["!", ["has", "point_count"]], [">", ["coalesce", ["get", "grouped"], 0], 1]],
+        layout: {
+          "text-field": ["to-string", ["get", "grouped"]],
+          "text-font": ["Noto Sans Bold"], "text-size": 11,
+          "text-offset": [0.95, -0.95], "text-allow-overlap": true, "text-ignore-placement": true,
+        },
+        paint: { "text-color": "#0b0f19", "text-halo-color": "#f5a623", "text-halo-width": 2.2 },
+      });
       map.on("click", "events", (e) => {
         const p = e.features[0].properties;
-        popup(e.features[0].geometry.coordinates, popupHtml(p));
+        const co = e.features[0].geometry.coordinates;
+        if (Number(p.grouped) > 1) { popup(co, groupPopupHtml(p)); return; }
+        popup(co, popupHtml(p));
         if (p.id) history.replaceState(null, "", "#event=" + p.id);
       });
       map.on("click", "clusters", (e) => zoomCluster("events", e));
@@ -649,14 +670,61 @@ function spreadPoints(items, keyOf) {
   return out;
 }
 
+// Merge events that share a location (same settlement, no street-level coords)
+// into one group at their centroid — instead of fanning them across the map,
+// which pushed markers off-screen and confused MapLibre's clustering.
+function groupNearby(items, threshDeg) {
+  const groups = [];
+  for (const it of items) {
+    const lonThresh = threshDeg / Math.max(0.3, Math.cos((it.lat * Math.PI) / 180));
+    let g = groups.find(
+      (grp) => Math.abs(grp.lat - it.lat) < threshDeg && Math.abs(grp.lon - it.lon) < lonThresh,
+    );
+    if (!g) { g = { lat: it.lat, lon: it.lon, items: [] }; groups.push(g); }
+    g.items.push(it);
+    g.lat = g.items.reduce((s, x) => s + x.lat, 0) / g.items.length;
+    g.lon = g.items.reduce((s, x) => s + x.lon, 0) / g.items.length;
+  }
+  return groups;
+}
+
 function renderMap() {
   if (!mapReady || !map.getSource("events")) return;
   const evs = activeEvents().filter((e) => e.lat != null && e.lon != null);
-  const feats = spreadPoints(evs, (e) => e.id).map(({ item, lon, lat }) => ({
-    type: "Feature",
-    geometry: { type: "Point", coordinates: [lon, lat] },
-    properties: { ...item, color: (TIER[item.confidence_tier] || TIER.wire).c, approx: item.geocoded_by === "gazetteer" ? 1 : 0 },
-  }));
+  const RANK = { high: 0, official_ua: 1, official_ru: 1, wire: 2, osint: 3, state_media: 4 };
+  const feats = groupNearby(evs, 0.014).map((g) => {
+    // colour the dot by the strongest tier in the group
+    const lead = g.items.slice().sort(
+      (a, b) => (RANK[a.confidence_tier] ?? 5) - (RANK[b.confidence_tier] ?? 5),
+    )[0];
+    const color = (TIER[lead.confidence_tier] || TIER.wire).c;
+    const approx = g.items.some((x) => x.geocoded_by === "gazetteer") ? 1 : 0;
+    if (g.items.length === 1) {
+      return {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [g.lon, g.lat] },
+        properties: { ...lead, color, approx, grouped: 0 },
+      };
+    }
+    return {
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [g.lon, g.lat] },
+      properties: {
+        grouped: g.items.length,
+        color,
+        approx,
+        items: JSON.stringify(
+          g.items
+            .slice()
+            .sort((a, b) => Date.parse(b.event_utc) - Date.parse(a.event_utc))
+            .map((x) => ({
+              id: x.id, h: x.headline, t: x.event_type, c: x.confidence_tier,
+              u: x.event_utc, url: x.source_url, o: x.source_outlet,
+            })),
+        ),
+      },
+    };
+  });
   map.getSource("events").setData(fc(feats));
   renderOblasts();
 }
@@ -762,6 +830,24 @@ function popupHtml(p) {
       <a href="${escapeAttr(p.source_url)}" target="_blank" rel="noopener">${escapeHtml(p.source_outlet || "source")}</a>
       ${pl}
     </div>
+  </div>`;
+}
+function groupPopupHtml(p) {
+  let items = [];
+  try { items = JSON.parse(p.items || "[]"); } catch (e) { /* ignore */ }
+  const rows = items.map((it) => {
+    const t = TIER[it.c] || TIER.wire;
+    const when = new Date(it.u).toISOString().slice(0, 16).replace("T", " ");
+    return `<li>
+      <a href="${escapeAttr(it.url)}" target="_blank" rel="noopener">${escapeHtml(it.h)}</a>
+      <span class="meta">${TYPE_LABEL[it.t] || it.t} &middot; <span style="color:${t.c}">${t.label}</span> &middot; ${when} UTC &middot; ${escapeHtml(it.o || "")}</span>
+      <button type="button" class="pl" data-id="${escapeHtml(String(it.id))}">permalink</button>
+    </li>`;
+  }).join("");
+  return `<div class="pop grouppop">
+    <h3>${items.length} reports at this location</h3>
+    <div class="meta">Same settlement, no street-level coordinates.</div>
+    <ul class="grouplist">${rows}</ul>
   </div>`;
 }
 function blogPopupHtml(p) {
