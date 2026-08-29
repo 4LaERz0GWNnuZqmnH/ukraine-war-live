@@ -161,14 +161,16 @@ function initMap() {
         paint: {
           "circle-color": "#111a2e", "circle-opacity": 0.95,
           "circle-stroke-color": "#f59e0b", "circle-stroke-width": 1.5,
-          "circle-radius": ["step", ["get", "point_count"], 13, 5, 16, 15, 20, 40, 25],
-          "circle-translate": [-11, 0],
+          // fixed-size count pill — the "×N" already conveys magnitude, and a
+          // constant radius lets it dock beside the teal blog badge without overlap
+          "circle-radius": 13,
+          "circle-translate": [-15, 0],
         },
       });
       map.addLayer({
         id: "cluster-count", type: "symbol", source: "events", filter: ["has", "point_count"],
         layout: { "text-field": ["concat", "×", ["get", "point_count_abbreviated"]], "text-font": ["Noto Sans Bold"], "text-size": 12, "text-allow-overlap": true },
-        paint: { "text-color": "#f5a623", "text-translate": [-11, 0] },
+        paint: { "text-color": "#f5a623", "text-translate": [-15, 0] },
       });
       map.addLayer({
         id: "events", type: "circle", source: "events", filter: ["!", ["has", "point_count"]],
@@ -190,14 +192,14 @@ function initMap() {
         paint: {
           "circle-color": "#111a2e", "circle-opacity": 0.95,
           "circle-stroke-color": "#2dd4bf", "circle-stroke-width": 2,
-          "circle-radius": ["step", ["get", "point_count"], 13, 5, 16, 15, 20],
-          "circle-translate": [11, 0],
+          "circle-radius": 12,
+          "circle-translate": [15, 0],
         },
       });
       map.addLayer({
         id: "blog-cluster-count", type: "symbol", source: "blogs", filter: ["has", "point_count"],
         layout: { "text-field": ["concat", "×", ["get", "point_count_abbreviated"]], "text-font": ["Noto Sans Bold"], "text-size": 12, "text-allow-overlap": true },
-        paint: { "text-color": "#2dd4bf", "text-translate": [11, 0] },
+        paint: { "text-color": "#2dd4bf", "text-translate": [15, 0] },
       });
       map.addLayer({
         id: "blog-markers", type: "circle", source: "blogs", filter: ["!", ["has", "point_count"]],
