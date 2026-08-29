@@ -55,8 +55,10 @@ function applyUrlParams() {
     const set = new Set(qp.get("tier").split(",").filter(Boolean));
     if (set.size) { tierOn.clear(); for (const t of set) if (TIER[t]) tierOn.add(t); }
   }
-  const w = Number(qp.get("window"));
-  if (Number.isFinite(w) && w >= 0) windowHrs = w;
+  if (qp.has("window")) {
+    const w = Number(qp.get("window"));
+    if (Number.isFinite(w) && w >= 0) windowHrs = w;
+  }
   if (qp.get("frontline") === "0") showFrontline = false;
   if (qp.get("blogs") === "0") showBlogs = false;
 }
