@@ -232,6 +232,20 @@ export default {
     };
     const cacheable = req.method === "GET" && !url.pathname.startsWith("/admin/");
     const cache = caches.default;
+
+    // Conditional GET. `If-None-Match` is `"tag"`, `W/"tag"`, a comma list, or
+    // `*`; weak-vs-strong is irrelevant here — a match means "the copy you have
+    // is still current", so answer 304 and skip re-sending the body.
+    const ifNoneMatch = req.headers.get("if-none-match");
+    const etagCurrent = (tag: string | null): boolean =>
+      !!tag && !!ifNoneMatch &&
+      ifNoneMatch.split(",").some((p) => {
+        const q = p.trim().replace(/^W\//, "");
+        return q === "*" || q === tag.replace(/^W\//, "");
+      });
+    const notModified = (tag: string, cacheControl: string): Response =>
+      new Response(null, { status: 304, headers: { etag: tag, "cache-control": cacheControl, ...CORS } });
+
     let cacheKey = req;
     if (cacheable) {
       const keep = READ_PARAMS[url.pathname];
@@ -242,30 +256,64 @@ export default {
       }
       cacheKey = new Request(norm.toString(), { method: "GET" });
       const hit = await cache.match(cacheKey);
-      if (hit) return hit;
+      if (hit) {
+        const tag = hit.headers.get("etag");
+        return etagCurrent(tag)
+          ? notModified(tag!, hit.headers.get("cache-control") || "public, max-age=300")
+          : hit;
+      }
     }
 
+    // `public, max-age=N` plus an optional stale-while-revalidate window: a
+    // revalidating client (the 10-min feed poll) then serves its cached copy
+    // immediately and refreshes in the background — usually a ~150-byte 304.
+    const cc = (maxAge: number, swr = 0): string =>
+      `public, max-age=${maxAge}` + (swr ? `, stale-while-revalidate=${swr}` : "");
+
     const finish = (resp: Response, maxAge: number): Response => {
-      if (cacheable && maxAge > 0 && resp.status === 200) {
-        ctx.waitUntil(cache.put(cacheKey, resp.clone()));
-      }
+      if (!cacheable || resp.status !== 200) return resp;
+      if (maxAge > 0) ctx.waitUntil(cache.put(cacheKey, resp.clone()));
+      const tag = resp.headers.get("etag");
+      if (etagCurrent(tag)) return notModified(tag!, resp.headers.get("cache-control")!);
       return resp;
     };
-    const json = (data: unknown, maxAge = 300) =>
-      finish(
-        new Response(JSON.stringify(data), {
+    // `etagSeed` lets a handler hash something narrower than the body: the feed
+    // seeds from {meta, events} so its per-request `updated` timestamp does not
+    // move the tag when nothing real has changed.
+    const json = (
+      data: unknown,
+      maxAge = 300,
+      opts: { etagSeed?: string; swr?: number } = {},
+    ) => {
+      const s = JSON.stringify(data);
+      return finish(
+        new Response(s, {
           headers: {
             "content-type": "application/json; charset=utf-8",
-            "cache-control": `public, max-age=${maxAge}`,
+            "cache-control": cc(maxAge, opts.swr),
+            etag: `"${fnv(opts.etagSeed ?? s)}"`,
             ...CORS,
           },
         }),
         maxAge,
       );
-    const body = (text: string, ct: string, maxAge: number, extra: Record<string, string> = {}) =>
+    };
+    const body = (
+      text: string,
+      ct: string,
+      maxAge: number,
+      extra: Record<string, string> = {},
+      opts: { etagSeed?: string; swr?: number } = {},
+    ) =>
       finish(
         new Response(text, {
-          headers: { "content-type": ct, "cache-control": `public, max-age=${maxAge}`, ...CORS, ...extra },
+          headers: {
+            "content-type": ct,
+            "cache-control": cc(maxAge, opts.swr),
+            etag: `"${fnv(opts.etagSeed ?? text)}"`,
+            ...CORS,
+            ...extra,
+          },
         }),
         maxAge,
       );
@@ -298,17 +346,21 @@ export default {
         if (Number.isFinite(t)) events = events.filter((e) => Date.parse(e.event_utc) >= t);
       }
       events.sort((a, b) => Date.parse(b.event_utc) - Date.parse(a.event_utc));
-      return json({
-        updated: new Date().toISOString(),
-        meta: {
-          strikes_run: sStat?.run_id ?? null,
-          ground_run: gStat?.run_id ?? null,
-          frontline_updated: fMeta?.updated ?? null,
-          latest_sitrep: Array.isArray(sitIdx) && sitIdx.length ? sitIdx[0] : null,
-        },
-        count: events.length,
-        events,
-      });
+      const meta = {
+        strikes_run: sStat?.run_id ?? null,
+        ground_run: gStat?.run_id ?? null,
+        frontline_updated: fMeta?.updated ?? null,
+        latest_sitrep: Array.isArray(sitIdx) && sitIdx.length ? sitIdx[0] : null,
+      };
+      return json(
+        { updated: new Date().toISOString(), meta, count: events.length, events },
+        300,
+        // Seed the ETag from the payload minus `updated`, so two rebuilds with
+        // the same events and ingest metadata validate as unchanged (304). No
+        // stale-while-revalidate here: the poll should still show a fresh body
+        // the moment one exists, it just no longer re-downloads an unchanged one.
+        { etagSeed: JSON.stringify({ meta, events }) },
+      );
     }
 
     // ---- archive search -----------------------------------------------------
@@ -399,7 +451,7 @@ export default {
     if (url.pathname === "/frontline.json") {
       const raw = await env.KV.get("frontline:geojson");
       if (!raw) return json({ geojson: { type: "FeatureCollection", features: [] }, feature_count: 0 }, 600);
-      return body(raw, "application/json; charset=utf-8", 3600);
+      return body(raw, "application/json; charset=utf-8", 3600, {}, { swr: 86400 });
     }
     if (url.pathname === "/frontline/history") {
       const idx = (await env.KV.get("frontline:snap:index", "json")) as Record<
@@ -461,7 +513,11 @@ export default {
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
 ${items}
 </channel></rss>`;
-      return body(rss, "application/rss+xml; charset=utf-8", 600);
+      return body(rss, "application/rss+xml; charset=utf-8", 600, {}, {
+        // `lastBuildDate` is stamped per request; exclude it so the tag only
+        // moves when the items do.
+        etagSeed: rss.replace(/<lastBuildDate>[^<]*<\/lastBuildDate>/, ""),
+      });
     }
 
     // ---- status ------------------------------------------------------------

@@ -474,7 +474,7 @@ function updateAsOfLabel() {
 
 async function loadHistoryList() {
   try {
-    const r = await fetch(`${API_BASE}/frontline/history`, { cache: "no-store" });
+    const r = await fetch(`${API_BASE}/frontline/history`);
     const d = await r.json();
     const sel = document.getElementById("fl-compare");
     if (!sel || !Array.isArray(d.snapshots)) return;
@@ -493,7 +493,7 @@ function wireHistoryCompare() {
   sel.addEventListener("change", async () => {
     if (!sel.value) { historyGeo = null; renderHistory(); return; }
     try {
-      const r = await fetch(`${API_BASE}/frontline/history/${sel.value}`, { cache: "no-store" });
+      const r = await fetch(`${API_BASE}/frontline/history/${sel.value}`);
       const d = await r.json();
       historyGeo = d.geojson || d;
       renderHistory();
@@ -511,7 +511,7 @@ function renderHistory() {
 
 async function load() {
   try {
-    const r = await fetch(`${API_BASE}/feed.json`, { cache: "no-store" });
+    const r = await fetch(`${API_BASE}/feed.json`);
     const d = await r.json();
     ALL = Array.isArray(d.events) ? d.events : [];
     setFreshness(d.meta);
@@ -539,7 +539,7 @@ function setFreshness(meta) {
 
 async function loadFrontline() {
   try {
-    const r = await fetch(`${API_BASE}/frontline.json`, { cache: "no-store" });
+    const r = await fetch(`${API_BASE}/frontline.json`);
     const d = await r.json();
     frontlineGeo = d.geojson || d;
     renderFrontline();
@@ -553,7 +553,7 @@ async function loadFrontline() {
 
 async function loadBlogs() {
   try {
-    const r = await fetch("/blogs.json", { cache: "no-store" });
+    const r = await fetch("/blogs.json");
     BLOGS = (await r.json()).blogs || [];
     renderBlogs();
     renderMap(); // event markers dock away from co-located blogs

@@ -11,7 +11,8 @@
     "deploy:strikes": "wrangler deploy --config workers/ingest-strikes/wrangler.toml",
     "deploy:ground": "wrangler deploy --config workers/ingest-ground/wrangler.toml",
     "deploy:api": "wrangler deploy --config workers/api/wrangler.toml",
-    "deploy:web": "wrangler pages deploy web --project-name=ukraine-war-live",
+    "build:web": "node scripts/build-web.mjs",
+    "deploy:web": "npm run build:web && wrangler pages deploy dist --project-name=ukraine-war-live",
     "deploy:all": "npm run deploy:strikes && npm run deploy:ground && npm run deploy:frontline && npm run deploy:sitrep && npm run deploy:api && npm run deploy:web",
     "typecheck": "tsc --noEmit",
     "bootstrap": "node scripts/bootstrap.mjs",
@@ -20,10 +21,12 @@
     "deploy:sitrep": "wrangler deploy --config workers/sitrep/wrangler.toml",
     "dev:sitrep": "wrangler dev --config workers/sitrep/wrangler.toml",
     "lint:web": "node --check web/app.js && node --check web/beacon.js && node scripts/check-inline-js.mjs",
-    "check": "npm run typecheck && npm run lint:web"
+    "check": "npm run typecheck && npm run lint:web && npm run build:web"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.0.0",
+    "esbuild": "0.28.1",
+    "html-minifier-terser": "7.2.0",
     "typescript": "^5.7.2",
     "wrangler": "^4.0.0"
   }

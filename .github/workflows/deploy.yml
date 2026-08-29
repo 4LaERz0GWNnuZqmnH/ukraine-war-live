@@ -24,6 +24,9 @@ jobs:
       - name: Lint frontend JS (app.js, beacon.js, inline page scripts)
         run: npm run lint:web
 
+      - name: Build web (minify web/ -> dist/)
+        run: npm run build:web
+
       - name: Deploy ingest-strikes worker
         run: npx wrangler deploy --config workers/ingest-strikes/wrangler.toml
         env:
@@ -55,7 +58,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Deploy web (Cloudflare Pages)
-        run: npx wrangler pages deploy web --project-name=ukraine-war-live --branch=main
+        run: npx wrangler pages deploy dist --project-name=ukraine-war-live --branch=main
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
