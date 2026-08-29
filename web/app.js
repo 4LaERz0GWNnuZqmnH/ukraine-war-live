@@ -158,7 +158,7 @@ function initMap() {
       });
 
       // events — clustered below zoom 10
-      map.addSource("events", { type: "geojson", data: fc([]), cluster: true, clusterMaxZoom: 9, clusterRadius: 46 });
+      map.addSource("events", { type: "geojson", data: fc([]), cluster: true, clusterMaxZoom: 11, clusterRadius: 46 });
       map.addLayer({
         id: "clusters", type: "circle", source: "events", filter: ["has", "point_count"],
         paint: {
@@ -220,6 +220,9 @@ function initMap() {
         map.on("mouseleave", ly, () => (map.getCanvas().style.cursor = ""));
       }
       wireOblastHover();
+      // re-fan co-located markers for the new zoom (see spreadPoints)
+      let zt = null;
+      map.on("zoomend", () => { clearTimeout(zt); zt = setTimeout(renderMap, 120); });
 
       mapReady = true;
       renderMap();
@@ -630,12 +633,17 @@ function spreadPoints(items, keyOf) {
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g).push(it);
   }
+  // Fan co-located points onto a ring sized for the CURRENT zoom, so the markers
+  // stay ~visually separated once you zoom past the cluster threshold instead of
+  // piling back into one blob. renderMap() re-runs on zoomend.
+  const z = mapReady && map ? map.getZoom() : 6;
+  const degPerPx = 360 / (512 * Math.pow(2, z));
   const out = [];
   for (const arr of groups.values()) {
     if (arr.length === 1) { out.push({ item: arr[0], lon: arr[0].lon, lat: arr[0].lat }); continue; }
     arr.sort((a, b) => (keyOf(a) < keyOf(b) ? -1 : keyOf(a) > keyOf(b) ? 1 : 0));
     const n = arr.length;
-    const r = 0.006 + 0.0016 * Math.min(n, 8);
+    const r = Math.min(0.05, Math.max(0.0035, 22 * degPerPx) * (1 + 0.12 * Math.min(n, 6)));
     const latRad = (arr[0].lat * Math.PI) / 180;
     arr.forEach((it, i) => {
       const ang = (2 * Math.PI * i) / n - Math.PI / 2;

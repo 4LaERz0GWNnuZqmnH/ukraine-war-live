@@ -90,9 +90,11 @@ The pipeline mechanics are conflict-agnostic — keep them unless you have a
 specific reason:
 
 - `shared/pipeline.ts` — fetch → parse → age-filter → AI extract → validate →
-  geocode → **two-signature dedup + corroboration** (URL hash + adaptive
-  grid/headline hash, 1h/4h buckets, 30-day TTL, 40k-key cap; a duplicate from a
-  different outlet promotes the original to `high`) → KV archive + live cache.
+  geocode → **two-signature dedup + corroboration** (URL hash + a content
+  signature: `grid+1h` for precise points, `place-slug+3h` for coarse ones,
+  headline-hash when there is no place name, `4h` for territorial/diplomatic;
+  30-day TTL, 40k-key cap; a duplicate from a different outlet promotes the
+  original to `high`) → KV archive + live cache.
 - `shared/models.ts` — the ordered Workers AI model list. The pipeline and SITREP
   try them in turn; a per-worker `MODEL` var (optional) is tried first. Adjust the
   list if Cloudflare retires a model.

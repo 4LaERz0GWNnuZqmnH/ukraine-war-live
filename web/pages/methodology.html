@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Methodology — Ukraine War Live</title>
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608301200" />
+  <link rel="stylesheet" href="/style.css?v=202608301600" />
 </head>
 <body>
   <header>
@@ -66,15 +66,16 @@
         backed by ~6,000 populated places from open GeoNames data inside the map area.
         Positions are settlement-centroid precision; no geocoding API is called.</li>
       <li><b>Deduplication &amp; corroboration.</b> Two signatures per event — an exact
-        source-URL hash, and a second one that adapts to how good the coordinate is: for a
-        model-supplied point it is <code>event type + 0.1° grid cell + time bucket</code>;
-        for a gazetteer centroid or no coordinate it is <code>event type +
-        normalised-headline hash + time bucket</code>, so an approximate location cannot
-        merge two genuinely different reports. Buckets are 1&nbsp;hour, or 4&nbsp;hours for
-        territorial change and diplomacy. If either signature is already seen the event is
-        dropped — but if that duplicate is from a different outlet than the first report,
-        it counts as independent corroboration, and at 2+&nbsp;outlets the original event
-        is promoted to <b>High confidence</b>. Signatures are kept for 30&nbsp;days, with a
+        source-URL hash, and a content signature that adapts to how precise the location
+        is. A model-supplied point uses <code>event type + 0.1° grid cell + 1-hour
+        bucket</code>. A coarse position (gazetteer centroid or none) with a named place
+        uses <code>event type + place slug + 3-hour bucket</code>, so two outlets writing
+        up the same strike on the same town collapse to one entry; with no place name it
+        falls back to a normalised-headline hash. Buckets are 4&nbsp;hours for territorial
+        change and diplomacy. If either signature is already seen the event is dropped —
+        and if that duplicate comes from a different outlet than the first report, it
+        counts as independent corroboration, so at 2+&nbsp;outlets the original event is
+        promoted to <b>High confidence</b>. Signatures are kept for 30&nbsp;days, with a
         40,000-key cap.</li>
       <li><b>Archive.</b> Surviving events are appended as NDJSON — one JSON object per
         line — to a per-pipeline, per-day key in Cloudflare KV, with a running
@@ -151,11 +152,14 @@
         temperature, hard caps, schema validation, and "never invent" instructions reduce
         this; they do not eliminate it.</li>
       <li>Coordinates are settlement-level at best and are omitted when uncertain; a
-        marker placed from the gazetteer is ringed white and noted as approximate.</li>
-      <li>Deduplication is still lossy: the headline-hash signature stops an approximate
-        location from merging distinct events, but two outlets writing the same strike
-        with different headlines can both survive, and a distinct model-located event in
-        the same 0.1° cell and hour can still be dropped.</li>
+        marker placed from the gazetteer is ringed white and noted as approximate.
+        Several events at the same settlement are fanned onto a small ring so they
+        do not sit exactly on top of each other.</li>
+      <li>Deduplication trades precision for fewer near-duplicates: coarse-located
+        events for the same place, type and 3-hour window are treated as one (shown
+        with a corroboration count), so two genuinely separate strikes on the same
+        town inside that window merge into a single entry. A distinct model-located
+        event in the same 0.1° cell and hour can also be dropped.</li>
       <li>Casualty figures are numbers announced by one side (Ukraine or Russia),
         passed through unverified. They are shown with whoever reported them and are
         never added together into an overall total.</li>

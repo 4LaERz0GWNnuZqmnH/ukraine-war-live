@@ -99,22 +99,46 @@ interface DedupEntry {
 type DedupVal = number | DedupEntry;
 const seenAt = (v: DedupVal): number => (typeof v === "number" ? v : v.t);
 
+// A short place slug from the event's named location — "Kherson Oblast" -> "kherson",
+// "Pokrovsk district" -> "pokrovsk". Used to collapse coarse-located reports.
+function placeSlug(ev: WarEvent): string {
+  return (ev.location_name || ev.admin_region || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\b(oblast|raion|region|district|city|of|the|near)\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .join("-");
+}
+
 // Two signatures per event; the event is a duplicate if either was already seen.
 //  - url: catches the same article re-fetched.
-//  - content depends on how good the coordinate is:
-//    * model-precise point  -> type + 0.1deg cell + time bucket (catches the same
-//      real event reported by different outlets within the hour).
-//    * gazetteer / no point  -> type + normalised-headline hash + time bucket
-//      (a coarse centroid must NOT collapse genuinely distinct events).
+//  - content depends on how precise the location is:
+//    * model-precise point -> type + 0.1deg cell + 1h bucket (same real event,
+//      different outlets, within the hour).
+//    * coarse (gazetteer centroid / no point) but a NAMED place -> type + place
+//      slug + 3h bucket, so two outlets writing up the same strike on the same
+//      town collapse to one (and drive the corroboration count). Trade-off: two
+//      genuinely separate strikes on that town inside 3h also merge.
+//    * coarse and no place name -> type + normalised-headline hash + 3h bucket.
 function signatures(ev: WarEvent): { url: string; content: string } {
   const t = Date.parse(ev.event_utc) || Date.now();
-  const windowH =
-    ev.event_type === "territorial_change" || ev.event_type === "diplomatic" ? 4 : 1;
+  const precise = ev.lat !== null && ev.geocoded_by === "model";
+  const slow = ev.event_type === "territorial_change" || ev.event_type === "diplomatic";
+  const windowH = slow ? 4 : precise ? 1 : 3;
   const bucket = Math.floor(t / (windowH * 3600 * 1000));
-  const content =
-    ev.lat !== null && ev.geocoded_by === "model"
-      ? `g:${ev.event_type}:${gridCell(ev.lat, ev.lon, 0.1)}:${bucket}`
+
+  let content: string;
+  if (precise) {
+    content = `g:${ev.event_type}:${gridCell(ev.lat as number, ev.lon as number, 0.1)}:${bucket}`;
+  } else {
+    const slug = placeSlug(ev);
+    content = slug
+      ? `p:${ev.event_type}:${slug}:${bucket}`
       : `h:${ev.event_type}:${fnv(normHeadline(ev.headline))}:${bucket}`;
+  }
   return { url: `u:${fnv(ev.source_url)}`, content };
 }
 

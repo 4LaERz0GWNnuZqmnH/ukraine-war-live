@@ -6,7 +6,7 @@
   <title>How this site was built — Ukraine War Live</title>
   <meta name="description" content="A detailed technical write-up of how Ukraine War Live is built: Cloudflare Workers, cron triggers, Workers AI extraction, KV storage, and a static MapLibre frontend, for essentially the price of a domain name." />
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608301200" />
+  <link rel="stylesheet" href="/style.css?v=202608301600" />
 </head>
 <body>
   <header>
@@ -159,14 +159,15 @@
       </li>
       <li>
         <strong>Cross-run dedup.</strong> Each surviving event gets two signatures:
-        a URL hash, and a second one that depends on how good the coordinate is —
-        for a model-supplied point it is <code>type + 0.1&deg; grid cell + time
-        bucket</code> (1-hour buckets, 4-hour for territorial change and
-        diplomacy); for a gazetteer centroid or no coordinate it is
-        <code>type + normalised-headline hash + time bucket</code>, so a coarse
-        centroid can never collapse two genuinely different reports. If either
-        signature is already in the KV key <code>dedup_store</code> the event is
-        dropped. That store is pruned by age (30 days) and hard-capped at 40k keys.
+        a URL hash, and a content signature scaled to how precise the location is.
+        A model-supplied point uses <code>type + 0.1&deg; grid cell + 1-hour
+        bucket</code>. A coarse position (gazetteer centroid or none) with a named
+        place uses <code>type + place slug + 3-hour bucket</code> — so two outlets
+        writing up the same strike on the same town collapse to one; with no place
+        name it falls back to a normalised-headline hash. Territorial change and
+        diplomacy use 4-hour buckets. If either signature is already in the KV key
+        <code>dedup_store</code> the event is dropped. That store is pruned by age
+        (30 days) and hard-capped at 40k keys.
       </li>
       <li>
         <strong>Corroboration.</strong> When a dropped duplicate comes from a
@@ -368,14 +369,15 @@
         <strong>Geolocation is coarse.</strong> A gazetteer centroid is a town, not
         a street. Events at places not in the table stay unmapped and are listed in
         the sidebar; markers placed from the gazetteer are ringed white and marked
-        "(approx. location)" in their popup.
+        "(approx. location)" in their popup. Several events at one settlement are
+        fanned onto a small ring, sized to the current zoom, so they don't stack.
       </li>
       <li>
-        <strong>Deduplication is still lossy.</strong> The headline-hash signature
-        stops a coarse centroid from collapsing distinct events, but two outlets
-        writing up the same strike with different headlines can both survive, and a
-        genuinely distinct model-located event in the same 0.1&deg; cell and hour can
-        still be dropped.
+        <strong>Deduplication trades precision for fewer near-duplicates.</strong>
+        Coarse-located events for the same place, type and 3-hour window are treated
+        as one entry (with a corroboration count), so two genuinely separate strikes
+        on the same town inside that window merge. A distinct model-located event in
+        the same 0.1&deg; cell and hour can also be dropped.
       </li>
       <li>
         <strong>Coverage follows the feeds.</strong> If an event is not in one of
