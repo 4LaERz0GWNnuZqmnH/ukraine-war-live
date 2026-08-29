@@ -1,0 +1,23 @@
+name = "uwl-ingest-strikes"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+workers_dev = false
+
+# Every 2 hours on the hour (UTC).
+[triggers]
+crons = ["0 */2 * * *"]
+
+[vars]
+PIPELINE = "strikes"
+# Optional: MODEL = "@cf/meta/llama-3.1-8b-instruct-fast"  # cheaper / faster, lower quality
+
+[ai]
+binding = "AI"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "3b271a52902c4e4f8c1bd5923f7938b0"
+
+# Secret (set once, persists across deploys):
+#   wrangler secret put RUN_KEY --config workers/ingest-strikes/wrangler.toml
+# Archive is written to KV (archive:YYYY-MM-DD). No external store / creds needed.

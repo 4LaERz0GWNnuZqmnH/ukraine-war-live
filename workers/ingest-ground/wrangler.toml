@@ -1,0 +1,22 @@
+name = "uwl-ingest-ground"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+workers_dev = false
+
+# Every 2 hours, offset 30 min from the strikes worker (UTC).
+[triggers]
+crons = ["30 */2 * * *"]
+
+[vars]
+PIPELINE = "ground"
+
+[ai]
+binding = "AI"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "3b271a52902c4e4f8c1bd5923f7938b0"
+
+# Secret (set once):
+#   wrangler secret put RUN_KEY --config workers/ingest-ground/wrangler.toml
+# Archive is written to KV (archive:YYYY-MM-DD). No external store / creds needed.

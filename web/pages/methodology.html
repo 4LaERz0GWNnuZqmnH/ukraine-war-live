@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Methodology — Ukraine War Live</title>
+  <link rel="stylesheet" href="/style.css?v=202608290339" />
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">UKRAINE&nbsp;WAR&nbsp;LIVE</a>
+    <nav>
+      <span class="navgroup">
+        <a href="/">Map</a>
+        <a href="/pages/chronology.html">Chronology</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/blogs.html">Blogs</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/methodology.html" aria-current="page">Methodology</a>
+        <a href="/pages/build.html">How it's built</a>
+        <a href="/feed.json">Feed</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/about.html">About</a>
+      </span>
+    </nav>
+  </header>
+
+  <div class="doc">
+    <h1>Methodology</h1>
+    <p>
+      Ukraine War Live is a <b>fully automated, serverless OSINT aggregation platform</b>.
+      There is no human in the loop: no analyst writes, edits, curates, or approves any
+      event on this site. It runs on Cloudflare's edge network and refreshes every
+      2&nbsp;hours (00:00–22:00 UTC).
+    </p>
+    <p><b>It is not</b> real-time, predictive, or authoritative. Every event is a
+      machine reading of a public news headline and should be treated as a lead, not a
+      fact. Any casualty figures are <b>numbers announced by one side in the war</b> —
+      Ukraine or Russia — passed through without independent checking. They are not
+      confirmed death or injury tolls.</p>
+
+    <h2>1. Data pipeline</h2>
+    <ol>
+      <li><b>RSS ingestion.</b> A fixed set of ~13 feeds (major international wires and
+        Ukrainian outlets in English) is polled concurrently each run. Items older than
+        96&nbsp;hours (4 days) are discarded; at most 90 unseen items proceed per run.</li>
+      <li><b>AI extraction.</b> Headlines and short summaries are passed to a large
+        language model (Llama&nbsp;3.3&nbsp;70B on Cloudflare Workers AI) at
+        temperature&nbsp;0.1 with a strict schema. The model is instructed never to
+        invent a source URL and never to guess coordinates. Output is capped at 20 strike
+        events and 12 ground events per run.</li>
+      <li><b>Validation &amp; geocoding.</b> Malformed objects are dropped. Coordinates
+        outside a Ukraine + western-Russia bounding box are nulled. For events the model
+        left without coordinates, a static gazetteer of ~110 places (oblast centres,
+        front-line towns, Russian target cities) fills in a settlement-centroid position.</li>
+      <li><b>Deduplication.</b> Two signatures per event — an exact source-URL hash, and
+        <code>event type + 0.5° grid cell + time bucket</code> (1&nbsp;hour for strikes,
+        4&nbsp;hours for territorial change). If either is already seen, the event is
+        dropped. Signatures are retained for 30&nbsp;days.</li>
+      <li><b>Archive.</b> Surviving events are appended as NDJSON — one JSON object per
+        line — to a per-day key in Cloudflare KV, with a running date&rarr;count index.
+        This is the uncapped canonical record, downloadable at <code>/archive/&lt;date&gt;</code>.</li>
+      <li><b>Distribution.</b> A merged JSON snapshot of the most recent 200 events per
+        pipeline is cached to Cloudflare KV and served at <code>/feed.json</code>. No
+        alerting, no social channels.</li>
+    </ol>
+
+    <h2>2. Confidence classification</h2>
+    <p>Every event carries one tier, shown as the marker colour on the map.</p>
+    <table>
+      <tr><th>Tier</th><th>Meaning</th><th>Colour</th></tr>
+      <tr><td>High confidence</td><td>Same event reported by 2+ independent outlets in the same run</td><td>green</td></tr>
+      <tr><td>Official — Ukraine</td><td>Attributed to Ukraine's General Staff, Air Force, or regional officials</td><td>blue</td></tr>
+      <tr><td>Official — Russia</td><td>Attributed to the Russian Ministry of Defence or government</td><td>violet</td></tr>
+      <tr><td>News wire</td><td>A single mainstream outlet, not attributed to either side</td><td>amber</td></tr>
+      <tr><td>OSINT</td><td>Geolocated or analyst-sourced (e.g. ISW)</td><td>grey</td></tr>
+      <tr><td>State media</td><td>Sourced to TASS / RIA / Sputnik and not independently confirmed</td><td>red</td></tr>
+    </table>
+
+    <h2>3. Ground-operations pipeline</h2>
+    <p>A separate worker, on its own schedule, with its own prompt, extracts only
+      <code>ground_engagement</code> and <code>territorial_change</code> events —
+      infantry, armour and artillery combat at named places, and settlements captured,
+      lost, or claimed. It explicitly ignores airstrikes, missiles, drones, air defence,
+      naval action, and diplomacy, which the main pipeline handles.</p>
+
+    <h2>4. Front-line layer</h2>
+    <p>The red occupied-territory shading on the map is a third worker that pulls the
+      current control map from <a href="https://deepstatemap.live" target="_blank" rel="noopener">DeepStateMap.live</a>
+      every 6&nbsp;hours, keeps only the occupied / Crimea / ORDLO polygons, and caches
+      the trimmed GeoJSON. It can be several hours stale and is
+      &copy;&nbsp;DeepStateMap.live, CC&nbsp;BY-NC-SA&nbsp;4.0. It is independent of the
+      event pipeline.</p>
+
+    <h2>5. Data architecture</h2>
+    <ul>
+      <li><b>Cloudflare KV</b> (one namespace) — deduplication signatures and processed-URL
+        set (30-day window), the 200-event live feed per pipeline, the per-day NDJSON
+        archive, the front-line GeoJSON, and run diagnostics.</li>
+      <li><b>Caps</b> — 20 strikes/run, 12 ground/run, 200 events per pipeline in the live
+        feed; the archive is uncapped.</li>
+      <li><b>Machine-readable</b> — <code>/feed.json</code>,
+        <code>/api/events?type=&amp;tier=&amp;since=</code>,
+        <code>/archive/index.json</code>, <code>/archive/&lt;date&gt;</code>,
+        <code>/frontline.json</code>, <code>/status</code>, <code>/llms.txt</code>.</li>
+      <li>Full build details: <a href="/pages/build.html">How it's built</a>.</li>
+    </ul>
+
+    <h2>6. Editorial policy</h2>
+    <p>The platform is politically agnostic by construction. The extractor records
+      attacker, target, and location regardless of the source's alignment, and applies
+      the same confidence rules to every side. There is no affiliation with any
+      government, military, or advocacy organisation. There are no ads and no third-party
+      trackers. Only public officials and official spokespeople are named; no private
+      individuals.</p>
+
+    <h2>7. Known limitations</h2>
+    <ul>
+      <li>Headline-only extraction can misplace, conflate, or misattribute events. The
+        temperature, hard caps, schema validation, and "never invent" instructions reduce
+        this; they do not eliminate it.</li>
+      <li>Coordinates are settlement-level at best and are omitted when uncertain.</li>
+      <li>Deduplication is lossy in both directions — it can miss near-duplicates and can
+        occasionally merge two distinct events.</li>
+      <li>Casualty figures are numbers announced by one side (Ukraine or Russia),
+        passed through unverified. They are shown with whoever reported them and are
+        never added together into an overall total.</li>
+      <li>Coverage is only as good as the feed list and the news cycle; quiet or poorly
+        reported events are simply absent.</li>
+    </ul>
+
+    <h2>8. Corrections &amp; reuse</h2>
+    <p>To flag an error, open an issue on the project repository. Data is provided as-is
+      for non-commercial reuse with attribution; see the repository for the licence.</p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>About — Ukraine War Live</title>
+  <meta name="description" content="About Ukraine War Live: who built it, when, why, and how to get in touch." />
+  <link rel="stylesheet" href="/style.css?v=202608290339" />
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">UKRAINE&nbsp;WAR&nbsp;LIVE</a>
+    <nav>
+      <span class="navgroup">
+        <a href="/">Map</a>
+        <a href="/pages/chronology.html">Chronology</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/blogs.html">Blogs</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/methodology.html">Methodology</a>
+        <a href="/pages/build.html">How it's built</a>
+        <a href="/feed.json">Feed</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/about.html" aria-current="page">About</a>
+      </span>
+    </nav>
+  </header>
+
+  <div class="doc">
+    <h1>About</h1>
+
+    <table>
+      <tr><th>Created</th><td>29 August 2026</td></tr>
+      <tr><th>Built by</th><td>Claude (Anthropic's Claude Code), working at the direction of the site's owner</td></tr>
+      <tr><th>Contact</th><td><a href="mailto:ukrainianwebsite@bugg.club">ukrainianwebsite@bugg.club</a></td></tr>
+    </table>
+
+    <h2>Why this exists</h2>
+    <p>
+      Ukraine War Live was built in a single working session as a test of how far
+      Claude can take a software project on its own — designing the architecture,
+      writing every line, deploying the workers, wiring up DNS, debugging the live
+      system, and iterating on feedback — with a human only steering and approving.
+      The whole thing runs on free infrastructure for the cost of a domain name.
+    </p>
+    <p>
+      It is also a real project, not just a demo. It is an automated, serverless
+      OSINT map of the Russia&ndash;Ukraine war, modelled on
+      <a href="https://iranwarlive.com" target="_blank" rel="noopener">iranwarlive.com</a>:
+      news feeds in, machine-extracted events out, plotted on a map with the
+      current front line, refreshed every two hours with no human in the loop. The
+      full technical write-up is on the <a href="/pages/build.html">How it's built</a>
+      page, and the extraction and confidence rules are on the
+      <a href="/pages/methodology.html">Methodology</a> page.
+    </p>
+
+    <h2>What it is not</h2>
+    <p>
+      Not affiliated with any government, military, news organisation, or advocacy
+      group. No ads, no third-party trackers. Every event is an automated reading of
+      a public news headline and is unverified; casualty figures are numbers
+      announced by one side (Ukraine or Russia), not confirmed tolls. Treat it as a
+      lead, not a fact.
+    </p>
+
+    <h2>Corrections</h2>
+    <p>
+      Spotted something wrong or missing? Email
+      <a href="mailto:ukrainianwebsite@bugg.club">ukrainianwebsite@bugg.club</a>.
+    </p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ukraine War Live — automated OSINT map</title>
+  <meta name="description" content="Automated, serverless OSINT map of the Russia-Ukraine war. Machine-extracted from public news, updated every 2 hours. Unverified." />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+  <link rel="stylesheet" href="/style.css?v=202608290339" />
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">UKRAINE&nbsp;WAR&nbsp;LIVE</a>
+    <nav>
+      <span class="navgroup">
+        <a href="/" aria-current="page">Map</a>
+        <a href="/pages/chronology.html">Chronology</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/blogs.html">Blogs</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/methodology.html">Methodology</a>
+        <a href="/pages/build.html">How it's built</a>
+        <a href="/feed.json">Feed</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/about.html">About</a>
+      </span>
+    </nav>
+  </header>
+
+  <main>
+    <div id="map"></div>
+    <button id="sbtoggle" type="button" aria-label="Collapse panel" title="Collapse panel">&gt;&gt;</button>
+
+    <aside id="sidebar">
+      <section class="panel">
+        <h2>Time window</h2>
+        <div class="btnrow" id="windows">
+          <button data-h="12">12h</button>
+          <button data-h="24" class="on">24h</button>
+          <button data-h="48">48h</button>
+          <button data-h="168">7d</button>
+          <button data-h="0">All</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Map</h2>
+        <div class="layers">
+          <label><input type="checkbox" id="ly_frontline" checked> <span class="swatch" style="background:#c0392b"></span> Russian-occupied area</label>
+          <label><input type="checkbox" id="ly_blogs" checked> <span class="swatch ring" style="border-color:#2dd4bf"></span> Independent blogs</label>
+        </div>
+        <p class="src" id="frontline-src">front line: —</p>
+      </section>
+
+      <section class="panel">
+        <h2>Event layers</h2>
+        <div id="layers" class="layers"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Confidence</h2>
+        <ul id="legend" class="legend"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>In window <span id="count" class="count">0</span>
+          <button id="tallyreset" class="reset" hidden>show all</button></h2>
+        <ul id="tally" class="tally"></ul>
+        <p class="src" id="tallyhint">Click a row to isolate that type.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Unmapped events <span id="nogeocount" class="count">0</span></h2>
+        <ul id="nogeo" class="nogeo"></ul>
+      </section>
+    </aside>
+  </main>
+
+  <footer>
+    <span>Auto-updates every 2 hours · last run <b id="updated">—</b></span>
+    <span class="warn">Automated &amp; unverified. Casualty figures are one side's announced numbers, not confirmed tolls.</span>
+  </footer>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="/app.js?v=202608290339"></script>
+</body>
+</html>

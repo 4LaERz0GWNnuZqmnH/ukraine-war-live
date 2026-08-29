@@ -1,0 +1,23 @@
+{
+  "name": "ukraine-war-live",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Automated, serverless OSINT aggregator for the Russia-Ukraine war",
+  "scripts": {
+    "dev:strikes": "wrangler dev --config workers/ingest-strikes/wrangler.toml",
+    "dev:ground": "wrangler dev --config workers/ingest-ground/wrangler.toml",
+    "dev:api": "wrangler dev --config workers/api/wrangler.toml",
+    "deploy:strikes": "wrangler deploy --config workers/ingest-strikes/wrangler.toml",
+    "deploy:ground": "wrangler deploy --config workers/ingest-ground/wrangler.toml",
+    "deploy:api": "wrangler deploy --config workers/api/wrangler.toml",
+    "deploy:web": "wrangler pages deploy web --project-name=ukraine-war-live",
+    "deploy:all": "npm run deploy:strikes && npm run deploy:ground && npm run deploy:api && npm run deploy:web",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.99.0"
+  }
+}

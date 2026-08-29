@@ -1,0 +1,3 @@
+# Copy to .dev.vars for local `wrangler dev`. Never commit .dev.vars.
+# The only worker secret is RUN_KEY.
+RUN_KEY=choose-a-long-random-string

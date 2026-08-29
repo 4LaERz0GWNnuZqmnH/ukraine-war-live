@@ -1,0 +1,15 @@
+name = "uwl-ingest-frontline"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+workers_dev = false
+
+# DeepStateMap updates a few times a day; refresh every 6 hours (UTC).
+[triggers]
+crons = ["15 */6 * * *"]
+
+[[kv_namespaces]]
+binding = "KV"
+id = "3b271a52902c4e4f8c1bd5923f7938b0"
+
+# Secret (set once):
+#   wrangler secret put RUN_KEY --config workers/ingest-frontline/wrangler.toml

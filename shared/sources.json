@@ -1,0 +1,18 @@
+{
+  "_comment": "pipeline: which ingest worker consumes the feed (strikes | ground | both). tier_hint: weak prior passed to the model. All URLs verified reachable 2026-08-29. A dead feed is skipped, not fatal.",
+  "feeds": [
+    { "name": "BBC World", "url": "https://feeds.bbci.co.uk/news/world/rss.xml", "pipeline": "both", "tier_hint": "wire" },
+    { "name": "BBC Europe", "url": "https://feeds.bbci.co.uk/news/world/europe/rss.xml", "pipeline": "both", "tier_hint": "wire" },
+    { "name": "The Guardian Ukraine", "url": "https://www.theguardian.com/world/ukraine/rss", "pipeline": "both", "tier_hint": "wire" },
+    { "name": "NYT World", "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "pipeline": "both", "tier_hint": "wire" },
+    { "name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "pipeline": "both", "tier_hint": "wire" },
+    { "name": "The Kyiv Independent", "url": "https://kyivindependent.com/feed/rss/", "pipeline": "both", "tier_hint": "wire" },
+    { "name": "Ukrainska Pravda (Eng)", "url": "https://www.pravda.com.ua/eng/rss/", "pipeline": "both", "tier_hint": "wire" },
+    { "name": "Ukrinform (Eng)", "url": "https://www.ukrinform.net/rss/block-lastnews", "pipeline": "both", "tier_hint": "wire" },
+    { "name": "Euromaidan Press", "url": "https://euromaidanpress.com/feed/", "pipeline": "both", "tier_hint": "wire" },
+    { "name": "European Pravda (Eng)", "url": "https://www.eurointegration.com.ua/eng/rss/", "pipeline": "both", "tier_hint": "wire" },
+    { "name": "Militarnyi", "url": "https://mil.in.ua/en/news/feed/", "pipeline": "both", "tier_hint": "osint" },
+    { "name": "ArmyInform", "url": "https://armyinform.com.ua/feed/", "pipeline": "ground", "tier_hint": "official_ua" },
+    { "name": "TASS", "url": "https://tass.com/rss/v2.xml", "pipeline": "both", "tier_hint": "state_media" }
+  ]
+}

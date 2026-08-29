@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blogs — Ukraine War Live</title>
+  <meta name="description" content="A hand-curated list of independent writers and newsletters covering the war in Ukraine, with links and short descriptions." />
+  <link rel="stylesheet" href="/style.css?v=202608290339" />
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">UKRAINE&nbsp;WAR&nbsp;LIVE</a>
+    <nav>
+      <span class="navgroup">
+        <a href="/">Map</a>
+        <a href="/pages/chronology.html">Chronology</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/blogs.html" aria-current="page">Blogs</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/methodology.html">Methodology</a>
+        <a href="/pages/build.html">How it's built</a>
+        <a href="/feed.json">Feed</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/about.html">About</a>
+      </span>
+    </nav>
+  </header>
+
+  <div class="doc">
+    <h1>Independent blogs &amp; newsletters</h1>
+    <p style="color:var(--muted)">
+      A hand-curated list of individuals writing about the war — reporters, veterans,
+      civilians and analysts publishing on their own. Not exhaustive, and inclusion is
+      not endorsement. Writers based in one place also appear as a
+      <span style="color:#2dd4bf">teal ring</span> on the
+      <a href="/">map</a>. Suggestions and corrections:
+      <a href="mailto:ukrainianwebsite@bugg.club">ukrainianwebsite@bugg.club</a>.
+    </p>
+
+    <h2>Reporting from a place</h2>
+    <div id="located"></div>
+
+    <h2>Analysis &amp; wider view</h2>
+    <div id="analysis"></div>
+
+    <p id="err" style="color:#f0a850"></p>
+  </div>
+
+  <script>
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    function card(b) {
+      const meta = [b.author, b.platform, b.place].filter(Boolean).map(esc).join(" &middot; ");
+      return `<div class="blogcard">
+        <h3><a href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.name)}</a></h3>
+        <div class="meta">${meta}</div>
+        <p>${esc(b.blurb)}</p>
+      </div>`;
+    }
+
+    fetch("/blogs.json", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        const blogs = d.blogs || [];
+        document.getElementById("located").innerHTML =
+          blogs.filter((b) => b.lat != null).map(card).join("") || "<p class='muted'>None listed.</p>";
+        document.getElementById("analysis").innerHTML =
+          blogs.filter((b) => b.lat == null).map(card).join("") || "<p class='muted'>None listed.</p>";
+      })
+      .catch((e) => { document.getElementById("err").textContent = "Could not load the list: " + e; });
+  </script>
+</body>
+</html>

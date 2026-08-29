@@ -1,0 +1,27 @@
+name = "uwl-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+workers_dev = false
+
+[[routes]]
+pattern = "api.ukraine.bugg.club"
+custom_domain = true
+
+[[kv_namespaces]]
+binding = "KV"
+id = "3b271a52902c4e4f8c1bd5923f7938b0"
+
+# Internal-only invocation of the cron workers (for POST /admin/run seeding).
+[[services]]
+binding = "INGEST_STRIKES"
+service = "uwl-ingest-strikes"
+
+[[services]]
+binding = "INGEST_GROUND"
+service = "uwl-ingest-ground"
+
+[[services]]
+binding = "INGEST_FRONTLINE"
+service = "uwl-ingest-frontline"
+
+# Secret (set once): wrangler secret put RUN_KEY --config workers/api/wrangler.toml

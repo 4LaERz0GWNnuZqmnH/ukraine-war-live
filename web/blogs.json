@@ -1,0 +1,96 @@
+{
+  "updated": "2026-08-29",
+  "note": "A hand-curated list of independent writers covering the war. It is not exhaustive and inclusion is not endorsement. Suggestions and corrections: ukrainianwebsite@bugg.club",
+  "blogs": [
+    {
+      "name": "An Alaskan in Ukraine",
+      "author": "Mark Hayward",
+      "url": "https://alaskaninukraine.substack.com",
+      "platform": "Substack",
+      "blurb": "Dispatches from Ukraine by an Alaskan army veteran turned aid volunteer, much of it centred on the Kherson area.",
+      "place": "Kherson",
+      "lat": 46.6354,
+      "lon": 32.6169
+    },
+    {
+      "name": "Kherson Weekly",
+      "author": "Brendan Kelley",
+      "url": "https://brendankelley.substack.com",
+      "platform": "Substack",
+      "blurb": "A weekly review of military and civilian events in and around Kherson — shelling, drone attacks, casualties, occupation news.",
+      "place": "Kherson",
+      "lat": 46.6354,
+      "lon": 32.6169
+    },
+    {
+      "name": "The Counteroffensive with Tim Mak",
+      "author": "Tim Mak",
+      "url": "https://www.counteroffensive.news",
+      "platform": "Substack",
+      "blurb": "A war correspondent's open notebook: human-scale stories from the front, reported from Kyiv by a small independent newsroom.",
+      "place": "Kyiv",
+      "lat": 50.4501,
+      "lon": 30.5234
+    },
+    {
+      "name": "THE WIRE TAP",
+      "author": "Chris Sampson",
+      "url": "https://thechrissampson.substack.com",
+      "platform": "Substack",
+      "blurb": "A Kyiv-based journalist and photographer on frontline life, military reform, national security and information warfare.",
+      "place": "Kyiv",
+      "lat": 50.4501,
+      "lon": 30.5234
+    },
+    {
+      "name": "Svitlana's Wartime Scribbles",
+      "author": "Svitlana Iukhymovych",
+      "url": "https://svitlanych.substack.com",
+      "platform": "Substack",
+      "blurb": "An unfiltered civilian diary from Kyiv — air raids, blackouts, grief, dark humour and the routines people build around uncertainty.",
+      "place": "Kyiv",
+      "lat": 50.4501,
+      "lon": 30.5234
+    },
+    {
+      "name": "Dust and Echoes",
+      "author": "Tom Mutch",
+      "url": "https://tommutch.substack.com",
+      "platform": "Substack",
+      "blurb": "Frontline reporting and analysis from a New Zealand journalist who has covered Ukraine since 2022; author of 'The Dogs of Mariupol'.",
+      "place": null,
+      "lat": null,
+      "lon": null
+    },
+    {
+      "name": "abdymok",
+      "author": "abdymok",
+      "url": "https://abdymok.substack.com",
+      "platform": "Substack",
+      "blurb": "A terse day-by-day war diary, numbered by day of the full-scale invasion, from a long-running Ukraine observer.",
+      "place": null,
+      "lat": null,
+      "lon": null
+    },
+    {
+      "name": "Futura Doctrina",
+      "author": "Mick Ryan",
+      "url": "https://mickryan.substack.com",
+      "platform": "Substack",
+      "blurb": "Weekly military analysis of the war and its lessons by a retired Australian major general.",
+      "place": null,
+      "lat": null,
+      "lon": null
+    },
+    {
+      "name": "Phillips's Newsletter",
+      "author": "Phillips P. O'Brien",
+      "url": "https://phillipspobrien.substack.com",
+      "platform": "Substack",
+      "blurb": "Strategic-studies analysis of the war and Western policy from a professor at the University of St Andrews.",
+      "place": null,
+      "lat": null,
+      "lon": null
+    }
+  ]
+}

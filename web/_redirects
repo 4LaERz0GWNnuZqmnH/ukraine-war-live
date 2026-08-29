@@ -1,0 +1,8 @@
+# The read API lives on api.ukraine.bugg.club. Send anyone who hits these paths on
+# the site domain (nav "Feed" link, hand-typed URLs) straight to the real endpoint.
+/feed.json       https://api.ukraine.bugg.club/feed.json        302
+/frontline.json  https://api.ukraine.bugg.club/frontline.json   302
+/status          https://api.ukraine.bugg.club/status           302
+/llms.txt        https://api.ukraine.bugg.club/llms.txt         302
+/api/*           https://api.ukraine.bugg.club/api/:splat       302
+/archive/*       https://api.ukraine.bugg.club/archive/:splat   302

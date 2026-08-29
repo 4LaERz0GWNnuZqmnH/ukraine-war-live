@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chronology — Ukraine War Live</title>
+  <link rel="stylesheet" href="/style.css?v=202608290339" />
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">UKRAINE&nbsp;WAR&nbsp;LIVE</a>
+    <nav>
+      <span class="navgroup">
+        <a href="/">Map</a>
+        <a href="/pages/chronology.html" aria-current="page">Chronology</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/blogs.html">Blogs</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/methodology.html">Methodology</a>
+        <a href="/pages/build.html">How it's built</a>
+        <a href="/feed.json">Feed</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/about.html">About</a>
+      </span>
+    </nav>
+  </header>
+
+  <div class="doc" style="max-width:1100px">
+    <h1>Chronology</h1>
+    <p style="color:var(--muted)">Newest first. Automated &amp; unverified. Last update <b id="updated">—</b>.</p>
+
+    <div class="filters">
+      <select id="type"><option value="">All types</option></select>
+      <select id="tier">
+        <option value="">All confidence</option>
+        <option value="high">High confidence</option>
+        <option value="official_ua">Official — Ukraine</option>
+        <option value="official_ru">Official — Russia</option>
+        <option value="wire">News wire</option>
+        <option value="osint">OSINT</option>
+        <option value="state_media">State media</option>
+      </select>
+      <input id="q" type="search" placeholder="filter text…" />
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Time (UTC)</th><th>Type</th><th>Place</th><th>Event</th><th>Confidence</th><th>Source</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const API_BASE = "https://api.ukraine.bugg.club";
+    const TIER = {
+      high: ["#22c55e", "High"], official_ua: ["#3b82f6", "UA official"],
+      official_ru: ["#a855f7", "RU official"], wire: ["#f59e0b", "Wire"],
+      osint: ["#9ca3af", "OSINT"], state_media: ["#ef4444", "State media"],
+    };
+    const TYPE_LABEL = {
+      missile_strike: "Missile", drone_strike: "Drone", air_defense: "Air defence",
+      deep_strike_ru: "Deep strike (RU)", naval: "Naval", energy_infra: "Energy",
+      ground_engagement: "Ground", territorial_change: "Territory",
+      casualty_report: "Casualties", diplomatic: "Diplomacy", pow_exchange: "POW",
+    };
+    let ALL = [];
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    const typeSel = document.getElementById("type");
+    for (const [k, v] of Object.entries(TYPE_LABEL)) {
+      const o = document.createElement("option"); o.value = k; o.textContent = v; typeSel.appendChild(o);
+    }
+    ["type", "tier", "q"].forEach((id) => document.getElementById(id).addEventListener("input", render));
+
+    async function load() {
+      const r = await fetch(`${API_BASE}/feed.json`, { cache: "no-store" });
+      const d = await r.json();
+      ALL = d.events || [];
+      document.getElementById("updated").textContent = new Date(d.updated).toUTCString();
+      render();
+    }
+
+    function render() {
+      const t = document.getElementById("type").value;
+      const tier = document.getElementById("tier").value;
+      const q = document.getElementById("q").value.toLowerCase();
+      const rows = document.getElementById("rows");
+      rows.innerHTML = "";
+      ALL.filter((e) => (!t || e.event_type === t) && (!tier || e.confidence_tier === tier) &&
+        (!q || (e.headline + " " + e.summary + " " + e.location_name).toLowerCase().includes(q)))
+        .forEach((e) => {
+          const [c, lbl] = TIER[e.confidence_tier] || TIER.wire;
+          const tr = document.createElement("tr");
+          tr.innerHTML =
+            `<td>${new Date(e.event_utc).toISOString().slice(0, 16).replace("T", " ")}</td>` +
+            `<td>${TYPE_LABEL[e.event_type] || e.event_type}</td>` +
+            `<td>${esc(e.location_name || "")}${e.admin_region ? ", " + esc(e.admin_region) : ""}</td>` +
+            `<td>${esc(e.headline)}<br><span style="color:var(--muted)">${esc(e.summary || "")}</span></td>` +
+            `<td><span style="color:${c};font-weight:700">${lbl}</span></td>` +
+            `<td><a href="${esc(e.source_url)}" target="_blank" rel="noopener">${esc(e.source_outlet || "link")}</a></td>`;
+          rows.appendChild(tr);
+        });
+    }
+    load();
+  </script>
+</body>
+</html>
