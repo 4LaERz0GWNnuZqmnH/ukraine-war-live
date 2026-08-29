@@ -98,7 +98,8 @@ specific reason:
 - The worker scaffolding and `workers/api` routing.
 - One KV namespace for everything. Key families:
   `live:<pipeline>`, `archive:<pipeline>:<YYYY-MM-DD>` (NDJSON) +
-  `archive:index:<pipeline>`, `dedup:*` / `processed:*`, `frontline:geojson` +
+  `archive:index:<pipeline>`, `dedup_store`, `processed:<pipeline>` (per pipeline —
+  a shared set starves whichever worker runs second), `promotions`, `frontline:geojson` +
   `frontline:snap:*` + `frontline:snap:index`, `sitrep:<date>` + `sitrep:index`,
   `status:<pipeline>`, `runs_log`.
 - Cron cadence: strikes `0 */2`, ground `30 */2`, frontline `15 */6`,
@@ -109,7 +110,7 @@ specific reason:
 
 ```bash
 npm ci
-npm run typecheck
+npm run check          # tsc + frontend JS lint
 
 # one command: creates the KV namespace, writes its id into every
 # workers/*/wrangler.toml, deploys the 5 Workers + Pages, sets RUN_KEY on each.

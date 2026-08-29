@@ -148,12 +148,18 @@ function ndjsonToEvents(blob: string | null): WarEventLite[] {
   return out;
 }
 
+// Each day costs 3 KV reads in /api/search, so the span is hard-capped: an
+// unbounded range would let a handful of requests drain the daily read budget.
+const SEARCH_MAX_DAYS = 31;
+
 function daysBetween(from: string, to: string): string[] {
   const a = Date.parse(from);
   const b = Date.parse(to);
   if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return [];
   const out: string[] = [];
-  for (let t = a; t <= b && out.length < 60; t += 86400_000) {
+  // keep the most recent SEARCH_MAX_DAYS of the requested span
+  const start = Math.max(a, b - (SEARCH_MAX_DAYS - 1) * 86400_000);
+  for (let t = start; t <= b && out.length < SEARCH_MAX_DAYS; t += 86400_000) {
     out.push(new Date(t).toISOString().slice(0, 10));
   }
   return out;
@@ -168,7 +174,13 @@ export default {
     // ---- privacy-preserving hit beacon (POST, no cookies, fire-and-forget) --
     if (req.method === "POST" && url.pathname === "/hit") {
       try {
-        if (env.AE) {
+        // Only count beacons that actually came from the site. Not a security
+        // boundary (Origin is forgeable) — it just keeps stray/bot POSTs out.
+        const origin = req.headers.get("origin") || req.headers.get("referer") || "";
+        const fromSite = /^https:\/\/(ukraine\.bugg\.club|[a-z0-9-]+\.ukraine-war-live\.pages\.dev|ukraine-war-live\.pages\.dev)\//.test(
+          origin.endsWith("/") ? origin : origin + "/",
+        );
+        if (env.AE && fromSite) {
           const day = new Date().toISOString().slice(0, 10);
           const ip = req.headers.get("cf-connecting-ip") || "";
           const ua = req.headers.get("user-agent") || "";
@@ -293,7 +305,22 @@ export default {
         })
         .sort((a, b) => Date.parse(b.event_utc) - Date.parse(a.event_utc))
         .slice(0, limit);
-      return json({ q, from, to, count: results.length, results }, 300);
+      // report the span actually searched, not the one requested — daysBetween
+      // clamps to SEARCH_MAX_DAYS, and silently returning a narrower result under
+      // the requested dates would be misleading.
+      return json(
+        {
+          q,
+          from: days.length ? days[0] : from,
+          to: days.length ? days[days.length - 1] : to,
+          requested_from: from,
+          requested_to: to,
+          max_days: SEARCH_MAX_DAYS,
+          count: results.length,
+          results,
+        },
+        300,
+      );
     }
 
     // ---- archive ----------------------------------------------------------
@@ -350,7 +377,7 @@ export default {
     if (url.pathname === "/sitrep") {
       const idx = ((await env.KV.get("sitrep:index", "json")) as string[] | null) || [];
       const latest = idx.length ? await env.KV.get(`sitrep:${idx[0]}`, "json") : null;
-      return json({ dates: idx, latest }, 0); // always fresh from KV
+      return json({ dates: idx, latest }, 60); // brief cache; SITREP changes once a day
     }
     const sitMatch = url.pathname.match(/^\/sitrep\/(\d{4}-\d{2}-\d{2})$/);
     if (sitMatch) {

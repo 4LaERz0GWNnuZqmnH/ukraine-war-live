@@ -24,9 +24,16 @@ function clean(s: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
     .replace(/&nbsp;/g, " ")
-    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    // numeric entities, decimal and hex. fromCodePoint (not fromCharCode) so
+    // astral-plane characters — emoji, some CJK — survive intact.
+    .replace(/&#(\d+);/g, (m, d) => cp(Number(d), m))
+    .replace(/&#[xX]([0-9a-fA-F]+);/g, (m, h) => cp(parseInt(h, 16), m))
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function cp(n: number, original: string): string {
+  return Number.isInteger(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : original;
 }
 
 export function parseFeed(xml: string): FeedItem[] {

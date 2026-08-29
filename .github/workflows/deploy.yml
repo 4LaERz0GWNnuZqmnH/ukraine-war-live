@@ -21,6 +21,9 @@ jobs:
 
       - run: npm run typecheck
 
+      - name: Lint frontend JS (app.js, beacon.js, inline page scripts)
+        run: npm run lint:web
+
       - name: Deploy ingest-strikes worker
         run: npx wrangler deploy --config workers/ingest-strikes/wrangler.toml
         env:

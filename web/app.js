@@ -66,7 +66,6 @@ function applyUrlParams() {
 function init() {
   applyUrlParams();
   pendingFocus = readEventHash();
-  buildLegend();
   buildLayers();
   buildTiers();
   wireWindows();
@@ -314,10 +313,6 @@ function hideMapMsg() { const el = document.getElementById("map-msg"); if (el) e
 
 /* --------------------------------------------------------------- controls -- */
 
-function buildLegend() {
-  // legend now lives inside the Confidence filter (buildTiers)
-}
-
 function buildLayers() {
   const box = document.getElementById("layers");
   if (!box) return;
@@ -447,13 +442,16 @@ function wireScrubber() {
     const [a, b] = eventTimeExtent();
     if (asOf === null || asOf >= b) asOf = a;
     play.textContent = "⏸";
+    let frame = 0;
     playTimer = setInterval(() => {
       const [lo, hi] = eventTimeExtent();
       asOf = (asOf === null ? lo : asOf) + (hi - lo) / 120; // ~12 s to sweep
-      if (asOf >= hi) { asOf = hi; stopPlay(); }
+      if (asOf >= hi) { asOf = hi; stopPlay(); return; }
       document.getElementById("timeline").value = String(Math.round(((asOf - lo) / (hi - lo)) * 1000));
       updateAsOfLabel();
-      renderSidebar(); renderMap();
+      renderMap();
+      // the sidebar rebuilds a lot of DOM; 2.5 Hz is plenty while scrubbing
+      if (frame++ % 4 === 0) renderSidebar();
     }, 100);
   }
   function stopPlay() {

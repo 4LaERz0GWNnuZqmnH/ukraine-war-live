@@ -18,7 +18,9 @@
     "build:gazetteer": "node scripts/build-gazetteer.mjs",
     "deploy:frontline": "wrangler deploy --config workers/ingest-frontline/wrangler.toml",
     "deploy:sitrep": "wrangler deploy --config workers/sitrep/wrangler.toml",
-    "dev:sitrep": "wrangler dev --config workers/sitrep/wrangler.toml"
+    "dev:sitrep": "wrangler dev --config workers/sitrep/wrangler.toml",
+    "lint:web": "node --check web/app.js && node --check web/beacon.js && node scripts/check-inline-js.mjs",
+    "check": "npm run typecheck && npm run lint:web"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.0.0",

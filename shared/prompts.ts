@@ -47,7 +47,7 @@ For THIS pass, emit ONLY these event_type values:
 - "energy_infra"    : deliberate strikes on power grid, substations, gas, heating
 
 Ignore front-line ground combat, territorial change, and diplomacy in this pass.
-Emit at most 12 objects — keep the most significant and most recently reported.
+Emit at most 20 objects — keep the most significant and most recently reported.
 `.trim();
 
 export const PROMPT_GROUND = `
@@ -59,5 +59,5 @@ For THIS pass, emit ONLY these event_type values:
 
 Explicitly IGNORE airstrikes, missiles, drones, air defence, naval action, and
 diplomatic statements in this pass.
-Emit at most 6 objects — prefer confirmed territorial changes over routine shelling.
+Emit at most 12 objects — prefer confirmed territorial changes over routine shelling.
 `.trim();

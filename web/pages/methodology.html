@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Methodology — Ukraine War Live</title>
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608311200" />
+  <link rel="stylesheet" href="/style.css?v=202608312000" />
 </head>
 <body>
   <header>
@@ -53,7 +53,9 @@
     <ol>
       <li><b>RSS ingestion.</b> A fixed set of ~13 feeds (major international wires and
         Ukrainian outlets in English) is polled concurrently each run. Items older than
-        96&nbsp;hours (4 days) are discarded; at most 90 unseen items proceed per run.</li>
+        96&nbsp;hours (4 days) are discarded; at most 45 unseen items proceed per run.
+        Each pipeline keeps its own record of what it has already read, so the two
+        never consume each other's articles.</li>
       <li><b>AI extraction.</b> Headlines and short summaries are passed to a large
         language model (Llama&nbsp;3.3&nbsp;70B on Cloudflare Workers AI) at
         temperature&nbsp;0.1 with a strict schema. The model is instructed never to

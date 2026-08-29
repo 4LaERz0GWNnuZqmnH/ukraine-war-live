@@ -6,7 +6,7 @@
   <title>How this site was built — Ukraine War Live</title>
   <meta name="description" content="A detailed technical write-up of how Ukraine War Live is built: Cloudflare Workers, cron triggers, Workers AI extraction, KV storage, and a static MapLibre frontend, for essentially the price of a domain name." />
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608311200" />
+  <link rel="stylesheet" href="/style.css?v=202608312000" />
 </head>
 <body>
   <header>
@@ -70,7 +70,7 @@
         ┌──────────────────────────────────────────────────────────────────┐
         │                 Cloudflare KV  (one namespace)                    │
         │  live:strikes  live:ground   archive:&lt;pipeline&gt;:&lt;day&gt; (+ index)   │
-        │  dedup_store   processed_urls  frontline:geojson  frontline:snap:*│
+        │  dedup_store  processed:&lt;pipeline&gt;  promotions  frontline:geojson  │
         │  sitrep:&lt;date&gt;  status:*  runs_log                                 │
         └───────────────────────────────┬──────────────────────────────────┘
                                         ▼
@@ -129,9 +129,11 @@
         rest are sorted newest-first.
       </li>
       <li>
-        <strong>Drop seen URLs.</strong> A hash of every processed link is kept in
-        the KV key <code>processed_urls</code> (30-day TTL, pruned each run). Up to
-        90 unseen items proceed.
+        <strong>Drop seen URLs.</strong> A hash of every link this pipeline has
+        processed is kept in <code>processed:&lt;pipeline&gt;</code> (30-day TTL,
+        pruned each run). The set is <em>per pipeline</em>: most feeds are shared,
+        so a single set let whichever worker ran first mark every article seen and
+        starve the other. Up to 45 unseen items proceed.
       </li>
       <li>
         <strong>AI extraction.</strong> The unseen items are sent as a JSON array
@@ -240,7 +242,8 @@
       <tr><td><code>live:strikes</code>, <code>live:ground</code></td><td>Newest 200 events per pipeline (JSON array) — the map feed</td></tr>
       <tr><td><code>archive:&lt;pipeline&gt;:YYYY-MM-DD</code></td><td>Every kept event that day, NDJSON, uncapped</td></tr>
       <tr><td><code>archive:index:&lt;pipeline&gt;</code></td><td><code>{ "2026-08-29": 41, ... }</code></td></tr>
-      <tr><td><code>dedup_store</code>, <code>processed_urls</code></td><td>Signature / URL hash &rarr; timestamp; 30-day window, 40k-key cap</td></tr>
+      <tr><td><code>dedup_store</code>, <code>processed:&lt;pipeline&gt;</code></td><td>Signature / URL hash &rarr; timestamp; 30-day window, 40k-key cap. The processed set is per pipeline.</td></tr>
+      <tr><td><code>promotions</code></td><td>Event id &rarr; corroboration count, so a promotion found by one pipeline reaches the other's feed (7-day TTL)</td></tr>
       <tr><td><code>frontline:geojson</code>, <code>frontline:snap:&lt;date&gt;</code></td><td>Current + historical occupied-territory FeatureCollections</td></tr>
       <tr><td><code>sitrep:&lt;date&gt;</code>, <code>sitrep:index</code></td><td>Daily digests</td></tr>
       <tr><td><code>status:*</code>, <code>runs_log</code></td><td>Health / last-run diagnostics</td></tr>

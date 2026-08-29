@@ -21,7 +21,10 @@ type Pipeline = "strikes" | "ground";
 
 const MAX_AGE_MS = 96 * 3600 * 1000; // 4-day ingestion window
 const DEDUP_TTL_S = 30 * 24 * 3600;
-const MAX_ITEMS = 90;
+// Items sent to the model per run. Not a throughput limit — observed `fresh` is
+// 17-33 — just a ceiling so one backlogged run can't blow the AI budget.
+const MAX_ITEMS = 45;
+const PROMO_TTL_S = 7 * 24 * 3600;
 
 interface FeedDef {
   name: string;
@@ -93,7 +96,6 @@ interface DedupEntry {
   t: number; // last-seen, epoch seconds
   id: string; // event id of the first report
   outlet: string; // most recent distinct outlet counted
-  tier: string; // current tier of the original event
   n: number; // number of independent outlets seen for this event
 }
 type DedupVal = number | DedupEntry;
@@ -167,6 +169,9 @@ function prune(map: Record<string, DedupVal>, nowS: number): void {
 
 // Durable archive: append kept events as NDJSON to a per-pipeline, per-UTC-day KV
 // key (`archive:<pipeline>:<day>`), plus a per-pipeline `{day: count}` index.
+// Events are filed under the day they HAPPENED (event_utc), not the day they were
+// ingested — the 4-day window means a run can carry yesterday's news, and the
+// daily SITREP reads these keys as "that day's events".
 // Because each pipeline only ever writes its own keys, the read-modify-write is
 // race-free even under KV eventual consistency. The API merges the two on read.
 async function archiveEvents(
@@ -175,12 +180,23 @@ async function archiveEvents(
   pipeline: Pipeline,
 ): Promise<void> {
   if (!events.length) return;
-  const day = new Date().toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
 
-  const key = `archive:${pipeline}:${day}`;
-  const prev = (await kv.get(key)) || "";
-  const lines = events.map((e) => JSON.stringify(e)).join("\n") + "\n";
-  await kv.put(key, prev + lines);
+  const byDay = new Map<string, WarEvent[]>();
+  for (const e of events) {
+    const t = Date.parse(e.event_utc);
+    const day = Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : today;
+    const arr = byDay.get(day);
+    if (arr) arr.push(e);
+    else byDay.set(day, [e]);
+  }
+
+  for (const [day, evs] of byDay) {
+    const key = `archive:${pipeline}:${day}`;
+    const prev = (await kv.get(key)) || "";
+    const lines = evs.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    await kv.put(key, prev + lines);
+  }
 
   const idxKey = `archive:index:${pipeline}`;
   const idxRaw = await kv.get(idxKey);
@@ -192,7 +208,7 @@ async function archiveEvents(
       idx = {};
     }
   }
-  idx[day] = (idx[day] || 0) + events.length;
+  for (const [day, evs] of byDay) idx[day] = (idx[day] || 0) + evs.length;
   await kv.put(idxKey, JSON.stringify(idx));
 }
 
@@ -254,8 +270,15 @@ export async function runIngest(env: Env): Promise<RunResult> {
     .filter((it) => nowMs - it.published < MAX_AGE_MS)
     .sort((a, b) => b.published - a.published);
 
-  // 3. Drop URLs we have already processed.
-  const seen = await readMap(env.KV, "processed_urls");
+  // 3. Drop URLs THIS pipeline has already processed.
+  //    Per-pipeline: most feeds are `pipeline: "both"`, so a single shared set let
+  //    whichever worker ran first (strikes, :00) mark every article seen, starving
+  //    the other (ground, :30) — and the strikes prompt discards exactly the
+  //    ground-combat stories ground needed. Seeded once from the old shared key so
+  //    switching over doesn't re-ingest the whole window.
+  const seenKey = `processed:${pipeline}`;
+  let seen = await readMap(env.KV, seenKey);
+  if (!Object.keys(seen).length) seen = await readMap(env.KV, "processed_urls");
   prune(seen, nowS);
 
   const fresh: typeof items = [];
@@ -342,8 +365,8 @@ export async function runIngest(env: Env): Promise<RunResult> {
   // 5. Cross-run dedup + corroboration.
   //    A duplicate that comes from a DIFFERENT outlet than the first report is
   //    counted as independent corroboration; at 2+ outlets the original event is
-  //    promoted to "high" (in the live feed / API — the raw archive line keeps
-  //    the tier it was written with).
+  //    promoted to "high". Archive lines already written keep their old tier;
+  //    lines written from this run carry the promotion.
   const dedup = await readMap(env.KV, "dedup_store");
   prune(dedup, nowS);
 
@@ -360,10 +383,7 @@ export async function runIngest(env: Env): Promise<RunResult> {
         hit.n = (hit.n || 1) + 1;
         hit.outlet = ev.source_outlet; // a further distinct outlet still counts
         hit.t = nowS;
-        if (hit.n >= 2) {
-          hit.tier = "high";
-          promote.set(hit.id, hit.n); // keep the count climbing on each new outlet
-        }
+        if (hit.n >= 2) promote.set(hit.id, hit.n); // climbs with each new outlet
       }
       dedup[sig.url] = nowS;
       continue; // still a duplicate — not re-added
@@ -371,26 +391,36 @@ export async function runIngest(env: Env): Promise<RunResult> {
 
     // genuinely new
     dedup[sig.url] = nowS;
-    dedup[sig.content] = {
-      t: nowS,
-      id: ev.id,
-      outlet: ev.source_outlet,
-      tier: ev.confidence_tier,
-      n: 1,
-    };
+    dedup[sig.content] = { t: nowS, id: ev.id, outlet: ev.source_outlet, n: 1 };
     kept.push(ev);
   }
 
-  // Same-run corroboration can land on an event we just kept.
-  for (const e of kept) {
-    const n = promote.get(e.id);
-    if (n) {
-      e.confidence_tier = "high";
-      e.corroborations = n;
-    }
-  }
   base.kept = kept.length;
   base.promoted = promote.size;
+
+  // Promotions are shared: an event first seen by one pipeline can be corroborated
+  // by an article the OTHER pipeline ingests. Park them in a small map that both
+  // workers apply to their own live feed each run (idempotent, so no hand-off
+  // bookkeeping — and each pipeline still only writes its own `live:` key).
+  const pendingRaw = (await env.KV.get("promotions", "json")) as Record<
+    string,
+    { n: number; t: number }
+  > | null;
+  const pending = pendingRaw || {};
+  for (const [id, n] of promote) pending[id] = { n, t: nowS };
+  for (const k of Object.keys(pending)) {
+    if (nowS - (pending[k]?.t ?? 0) > PROMO_TTL_S) delete pending[k];
+  }
+  const applyPromotions = (list: WarEvent[]) => {
+    for (const e of list) {
+      const p = pending[e.id];
+      if (p && p.n >= 2) {
+        e.confidence_tier = "high";
+        e.corroborations = p.n;
+      }
+    }
+  };
+  applyPromotions(kept); // so the archived line carries it too
 
   // 6. Append to the durable archive (KV, one NDJSON key per pipeline per day).
   if (kept.length) {
@@ -412,22 +442,16 @@ export async function runIngest(env: Env): Promise<RunResult> {
       prev = [];
     }
   }
-  // Apply cross-run promotions to events already in the live feed.
-  for (const e of prev) {
-    const n = promote.get(e.id);
-    if (n) {
-      e.confidence_tier = "high";
-      e.corroborations = n;
-    }
-  }
+  applyPromotions(prev); // and events already sitting in the live feed
   const keptIds = new Set(kept.map((e) => e.id));
   const merged = [...kept, ...prev.filter((e) => !keptIds.has(e.id))].slice(0, 200);
   await env.KV.put(liveKey, JSON.stringify(merged));
 
   // 8. Persist dedup state + status.
   for (const it of fresh) seen[fnv(it.link)] = nowS;
-  await env.KV.put("processed_urls", JSON.stringify(seen));
+  await env.KV.put(seenKey, JSON.stringify(seen));
   await env.KV.put("dedup_store", JSON.stringify(dedup));
+  if (promote.size || pendingRaw) await env.KV.put("promotions", JSON.stringify(pending));
   await env.KV.put(`status:${pipeline}`, JSON.stringify(base));
   await logRun(env.KV, base);
 

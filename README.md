@@ -36,7 +36,7 @@ dedup signatures, front-line GeoJSON + snapshots, daily SITREPs, diagnostics).
 
 ```bash
 npm install                       # needs Node 22+ (wrangler 4)
-npm run typecheck
+npm run check                     # tsc + frontend JS lint
 cp .dev.vars.example .dev.vars    # set RUN_KEY for the /run trigger
 npm run dev:strikes               # then: curl -XPOST localhost:8787/run
 
