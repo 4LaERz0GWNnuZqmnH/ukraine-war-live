@@ -207,7 +207,7 @@ function initMap() {
       map.on("click", "events", (e) => {
         const p = e.features[0].properties;
         const co = e.features[0].geometry.coordinates;
-        if (Number(p.grouped) > 1) { popup(co, groupPopupHtml(p)); return; }
+        if (Number(p.grouped) > 1) { popup(co, groupPopupHtml(p), "390px"); return; }
         popup(co, popupHtml(p));
         if (p.id) history.replaceState(null, "", "#event=" + p.id);
       });
@@ -231,7 +231,11 @@ function initMap() {
       });
       map.addLayer({
         id: "blog-markers", type: "circle", source: "blogs", filter: ["!", ["has", "point_count"]],
-        paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 5, 10, 8], "circle-color": "#0b0f19", "circle-stroke-color": "#2dd4bf", "circle-stroke-width": 2.5, "circle-opacity": 0.95 },
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 5, 10, 8],
+          "circle-color": "#0b0f19", "circle-stroke-color": "#2dd4bf", "circle-stroke-width": 2.5,
+          "circle-opacity": 0.95, "circle-translate": [10, 0], // dock right, clear of event markers
+        },
       });
       map.on("click", "blog-markers", (e) => popup(e.features[0].geometry.coordinates, blogPopupHtml(e.features[0].properties)));
       map.on("click", "blog-clusters", (e) => zoomCluster("blogs", e));
@@ -256,8 +260,8 @@ function initMap() {
   }
 }
 
-function popup(lngLat, html) {
-  const pp = new maplibregl.Popup({ maxWidth: "320px" }).setLngLat(lngLat).setHTML(html).addTo(map);
+function popup(lngLat, html, maxWidth) {
+  const pp = new maplibregl.Popup({ maxWidth: maxWidth || "320px" }).setLngLat(lngLat).setHTML(html).addTo(map);
   pp.on("close", () => {
     if (location.hash.indexOf("event=") !== -1) {
       history.replaceState(null, "", location.pathname + location.search);
@@ -577,6 +581,7 @@ async function loadBlogs() {
     const r = await fetch("/blogs.json", { cache: "no-store" });
     BLOGS = (await r.json()).blogs || [];
     renderBlogs();
+    renderMap(); // event markers dock away from co-located blogs
   } catch (err) { console.warn("blogs load failed", err); }
 }
 
@@ -691,6 +696,7 @@ function groupNearby(items, threshDeg) {
 function renderMap() {
   if (!mapReady || !map.getSource("events")) return;
   const evs = activeEvents().filter((e) => e.lat != null && e.lon != null);
+  const blogPts = (BLOGS || []).filter((b) => b.lat != null && b.lon != null);
   const RANK = { high: 0, official_ua: 1, official_ru: 1, wire: 2, osint: 3, state_media: 4 };
   const feats = groupNearby(evs, 0.014).map((g) => {
     // colour the dot by the strongest tier in the group
@@ -699,16 +705,22 @@ function renderMap() {
     )[0];
     const color = (TIER[lead.confidence_tier] || TIER.wire).c;
     const approx = g.items.some((x) => x.geocoded_by === "gazetteer") ? 1 : 0;
+    // if a blog marker sits on this spot, dock the event marker ~1 km west so
+    // the two don't overlap (blog markers/badges are docked east)
+    const nearBlog = blogPts.some(
+      (b) => Math.abs(b.lat - g.lat) < 0.014 && Math.abs(b.lon - g.lon) < 0.02,
+    );
+    const lon = nearBlog ? g.lon - 0.013 : g.lon;
     if (g.items.length === 1) {
       return {
         type: "Feature",
-        geometry: { type: "Point", coordinates: [g.lon, g.lat] },
+        geometry: { type: "Point", coordinates: [lon, g.lat] },
         properties: { ...lead, color, approx, grouped: 0 },
       };
     }
     return {
       type: "Feature",
-      geometry: { type: "Point", coordinates: [g.lon, g.lat] },
+      geometry: { type: "Point", coordinates: [lon, g.lat] },
       properties: {
         grouped: g.items.length,
         color,
