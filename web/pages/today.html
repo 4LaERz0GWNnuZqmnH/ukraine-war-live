@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Today — Ukraine War Live</title>
+  <meta name="description" content="A short automated daily situation report of the Russia-Ukraine war, generated from that day's machine-extracted events. Every day's report is kept." />
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="/style.css?v=202608291200" />
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">UKRAINE&nbsp;WAR&nbsp;LIVE</a>
+    <nav>
+      <span class="navgroup">
+        <a href="/">Map</a>
+        <a href="/pages/today.html" aria-current="page">Today</a>
+        <a href="/pages/chronology.html">Chronology</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/blogs.html">Blogs</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/methodology.html">Methodology</a>
+        <a href="/pages/build.html">How it's built</a>
+        <a href="/pages/status.html">Status</a>
+        <a href="/feed.json">Feed</a>
+      </span>
+      <span class="navsep">|</span>
+      <span class="navgroup">
+        <a href="/pages/about.html">About</a>
+      </span>
+    </nav>
+  </header>
+
+  <div class="doc">
+    <h1>Today</h1>
+    <p style="color:var(--muted)">
+      A short daily situation report, written by a language model from that day's
+      machine-extracted events — nothing else. Unverified; casualty figures are
+      one side's claims. The newest report is on top; earlier days are kept below.
+    </p>
+    <div id="list"><p class="muted">Loading…</p></div>
+  </div>
+
+  <script>
+    const API = "https://api.ukraine.bugg.club";
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    function card(s) {
+      const bullets = (s.bullets || []).map((b) => `<li>${esc(b)}</li>`).join("");
+      return `<div class="sitrep">
+        <h3>${esc(s.headline || "")}</h3>
+        <div class="date">${esc(s.date)} · ${s.event_count || 0} events${bullets ? "" : " · no summary generated"}</div>
+        ${bullets ? `<ul>${bullets}</ul>` : ""}
+      </div>`;
+    }
+
+    (async () => {
+      try {
+        const idx = await fetch(`${API}/sitrep`, { cache: "no-store" }).then((r) => r.json());
+        const dates = (idx.dates || []).slice(0, 21);
+        const list = document.getElementById("list");
+        if (!dates.length) { list.innerHTML = '<p class="muted">No reports yet — the first is generated at 04:10 UTC.</p>'; return; }
+        let reps = await Promise.all(
+          dates.map((d, i) =>
+            i === 0 && idx.latest ? Promise.resolve(idx.latest)
+            : fetch(`${API}/sitrep/${d}`, { cache: "default" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+          )
+        );
+        reps = reps.filter(Boolean);
+        // drop empty "no events" reports unless they're all we have
+        const withContent = reps.filter((s) => (s.event_count || 0) > 0 || (s.bullets || []).length);
+        list.innerHTML = (withContent.length ? withContent : reps).map(card).join("")
+          || '<p class="muted">No reports yet — the first is generated at 04:10 UTC.</p>';
+      } catch (e) {
+        document.getElementById("list").innerHTML = '<p class="ok" style="color:#f0a850">Could not load reports: ' + esc(e) + "</p>";
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+name = "uwl-sitrep"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+workers_dev = false
+
+# Once a day at 04:10 UTC — summarises the previous (complete) UTC day.
+[triggers]
+crons = ["10 4 * * *"]
+
+[ai]
+binding = "AI"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "3b271a52902c4e4f8c1bd5923f7938b0"
+
+# Secret (set once): wrangler secret put RUN_KEY --config workers/sitrep/wrangler.toml

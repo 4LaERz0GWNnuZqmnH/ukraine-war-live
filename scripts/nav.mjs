@@ -4,20 +4,22 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const PAGES = [
   ["web/index.html", "map"],
+  ["web/pages/today.html", "today"],
   ["web/pages/chronology.html", "chronology"],
   ["web/pages/blogs.html", "blogs"],
   ["web/pages/methodology.html", "methodology"],
   ["web/pages/build.html", "build"],
+  ["web/pages/status.html", "status"],
   ["web/pages/about.html", "about"],
 ];
 
 function nav(cur) {
   const c = (k) => (k === cur ? ' aria-current="page"' : "");
-  // /feed.json 302-redirects to the API worker (see web/_redirects).
-  const feed = '<a href="/feed.json">Feed</a>';
+  const feed = cur === "map" ? '<a href="/feed.json">Feed</a>' : '<a href="/feed.json">Feed</a>';
   return `<nav>
       <span class="navgroup">
         <a href="/"${c("map")}>Map</a>
+        <a href="/pages/today.html"${c("today")}>Today</a>
         <a href="/pages/chronology.html"${c("chronology")}>Chronology</a>
       </span>
       <span class="navsep">|</span>
@@ -28,6 +30,7 @@ function nav(cur) {
       <span class="navgroup">
         <a href="/pages/methodology.html"${c("methodology")}>Methodology</a>
         <a href="/pages/build.html"${c("build")}>How it's built</a>
+        <a href="/pages/status.html"${c("status")}>Status</a>
         ${feed}
       </span>
       <span class="navsep">|</span>
@@ -38,15 +41,20 @@ function nav(cur) {
 }
 
 for (const [file, key] of PAGES) {
-  const src = readFileSync(file, "utf8");
+  let src;
+  try {
+    src = readFileSync(file, "utf8");
+  } catch {
+    console.error("!! missing", file);
+    process.exit(1);
+  }
   if (!/<nav>[\s\S]*?<\/nav>/.test(src)) {
-    console.error("!! no <nav> found in", file);
+    console.error("!! no <nav> in", file);
     process.exit(1);
   }
   const out = src.replace(/<nav>[\s\S]*?<\/nav>/, nav(key));
-  if (out === src) {
-    console.log("nav already current:", file);
-  } else {
+  if (out === src) console.log("nav already current:", file);
+  else {
     writeFileSync(file, out);
     console.log("updated nav:", file);
   }

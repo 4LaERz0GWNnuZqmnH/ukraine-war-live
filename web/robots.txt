@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /embed.html
+Sitemap: https://ukraine.bugg.club/sitemap.xml

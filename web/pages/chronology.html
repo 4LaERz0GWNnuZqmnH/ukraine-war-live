@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Chronology — Ukraine War Live</title>
-  <link rel="stylesheet" href="/style.css?v=202608290339" />
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="/style.css?v=202608291200" />
 </head>
 <body>
   <header>
@@ -12,6 +13,7 @@
     <nav>
       <span class="navgroup">
         <a href="/">Map</a>
+        <a href="/pages/today.html">Today</a>
         <a href="/pages/chronology.html" aria-current="page">Chronology</a>
       </span>
       <span class="navsep">|</span>
@@ -22,6 +24,7 @@
       <span class="navgroup">
         <a href="/pages/methodology.html">Methodology</a>
         <a href="/pages/build.html">How it's built</a>
+        <a href="/pages/status.html">Status</a>
         <a href="/feed.json">Feed</a>
       </span>
       <span class="navsep">|</span>
@@ -33,7 +36,10 @@
 
   <div class="doc" style="max-width:1100px">
     <h1>Chronology</h1>
-    <p style="color:var(--muted)">Newest first. Automated &amp; unverified. Last update <b id="updated">—</b>.</p>
+    <p style="color:var(--muted)">
+      The live feed (last few days). Newest first. Automated &amp; unverified.
+      Last update <b id="updated">—</b>.
+    </p>
 
     <div class="filters">
       <select id="type"><option value="">All types</option></select>
@@ -47,7 +53,9 @@
         <option value="state_media">State media</option>
       </select>
       <input id="q" type="search" placeholder="filter text…" />
+      <button id="arch" type="button" title="Search the archive (last ~6 weeks)">search archive ↧</button>
     </div>
+    <p class="src" id="archnote"></p>
 
     <table>
       <thead>
@@ -78,6 +86,21 @@
       const o = document.createElement("option"); o.value = k; o.textContent = v; typeSel.appendChild(o);
     }
     ["type", "tier", "q"].forEach((id) => document.getElementById(id).addEventListener("input", render));
+
+    document.getElementById("arch").addEventListener("click", async () => {
+      const q = document.getElementById("q").value.trim();
+      const note = document.getElementById("archnote");
+      if (q.length < 2) { note.textContent = "Type at least 2 characters, then search the archive."; return; }
+      note.textContent = "searching archive…";
+      try {
+        const d = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(q)}`, { cache: "default" }).then((r) => r.json());
+        const have = new Set(ALL.map((e) => e.id));
+        const extra = (d.results || []).filter((e) => !have.has(e.id));
+        ALL = ALL.concat(extra).sort((a, b) => Date.parse(b.event_utc) - Date.parse(a.event_utc));
+        note.textContent = `archive ${d.from} → ${d.to}: ${d.count} match${d.count === 1 ? "" : "es"}, ${extra.length} not already shown.`;
+        render();
+      } catch (e) { note.textContent = "archive search failed."; }
+    });
 
     async function load() {
       const r = await fetch(`${API_BASE}/feed.json`, { cache: "no-store" });

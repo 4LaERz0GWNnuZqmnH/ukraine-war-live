@@ -79,15 +79,29 @@ function coerceEvents(resp: unknown): unknown[] {
   return [];
 }
 
+function normHeadline(s: string): string {
+  return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
+}
+
+// Two signatures per event; the event is a duplicate if either was already seen.
+//  - URL hash: catches the same article re-fetched.
+//  - The second depends on how good the coordinate is:
+//    * model-precise point  -> type + 0.1deg cell + time bucket (catches the same
+//      real event reported by different outlets within the hour).
+//    * gazetteer / no point  -> type + normalised-headline hash + time bucket
+//      (a coarse centroid must NOT collapse genuinely distinct events).
 function signatures(ev: WarEvent): string[] {
   const t = Date.parse(ev.event_utc) || Date.now();
   const windowH =
     ev.event_type === "territorial_change" || ev.event_type === "diplomatic" ? 4 : 1;
   const bucket = Math.floor(t / (windowH * 3600 * 1000));
-  return [
-    `u:${fnv(ev.source_url)}`,
-    `g:${ev.event_type}:${gridCell(ev.lat, ev.lon)}:${bucket}`,
-  ];
+  const sigs = [`u:${fnv(ev.source_url)}`];
+  if (ev.lat !== null && ev.geocoded_by === "model") {
+    sigs.push(`g:${ev.event_type}:${gridCell(ev.lat, ev.lon, 0.1)}:${bucket}`);
+  } else {
+    sigs.push(`h:${ev.event_type}:${fnv(normHeadline(ev.headline))}:${bucket}`);
+  }
+  return sigs;
 }
 
 async function readMap(kv: KVNamespace, key: string): Promise<Record<string, number>> {
@@ -100,24 +114,38 @@ async function readMap(kv: KVNamespace, key: string): Promise<Record<string, num
   }
 }
 
+const DEDUP_MAX_KEYS = 40000; // hard cap so the blob never approaches KV's 25 MB limit
+
 function prune(map: Record<string, number>, nowS: number): void {
   for (const k of Object.keys(map)) {
     if (nowS - map[k] > DEDUP_TTL_S) delete map[k];
   }
+  const keys = Object.keys(map);
+  if (keys.length > DEDUP_MAX_KEYS) {
+    keys.sort((a, b) => map[a] - map[b]); // oldest first
+    for (let i = 0; i < keys.length - DEDUP_MAX_KEYS; i++) delete map[keys[i]];
+  }
 }
 
-// Durable archive: append kept events as NDJSON to a per-UTC-day KV key, and keep
-// a small date->count index. Runs are >=30 min apart (cron) or sequential
-// (admin/run), so read-modify-write is safe here.
-async function archiveEvents(kv: KVNamespace, events: WarEvent[]): Promise<void> {
+// Durable archive: append kept events as NDJSON to a per-pipeline, per-UTC-day KV
+// key (`archive:<pipeline>:<day>`), plus a per-pipeline `{day: count}` index.
+// Because each pipeline only ever writes its own keys, the read-modify-write is
+// race-free even under KV eventual consistency. The API merges the two on read.
+async function archiveEvents(
+  kv: KVNamespace,
+  events: WarEvent[],
+  pipeline: Pipeline,
+): Promise<void> {
   if (!events.length) return;
   const day = new Date().toISOString().slice(0, 10);
-  const key = `archive:${day}`;
+
+  const key = `archive:${pipeline}:${day}`;
   const prev = (await kv.get(key)) || "";
   const lines = events.map((e) => JSON.stringify(e)).join("\n") + "\n";
   await kv.put(key, prev + lines);
 
-  const idxRaw = await kv.get("archive:index");
+  const idxKey = `archive:index:${pipeline}`;
+  const idxRaw = await kv.get(idxKey);
   let idx: Record<string, number> = {};
   if (idxRaw) {
     try {
@@ -127,7 +155,7 @@ async function archiveEvents(kv: KVNamespace, events: WarEvent[]): Promise<void>
     }
   }
   idx[day] = (idx[day] || 0) + events.length;
-  await kv.put("archive:index", JSON.stringify(idx));
+  await kv.put(idxKey, JSON.stringify(idx));
 }
 
 async function logRun(kv: KVNamespace, result: RunResult): Promise<void> {
@@ -220,7 +248,7 @@ export async function runIngest(env: Env): Promise<RunResult> {
   const prompt = pipeline === "ground" ? PROMPT_GROUND : PROMPT_STRIKES;
   const payload = fresh.map((it) => ({
     headline: it.title,
-    summary: it.summary,
+    summary: it.summary.slice(0, 200), // headline carries most of the signal
     source_outlet: it.outlet,
     source_url: it.link,
     published: new Date(it.published).toISOString(),
@@ -260,6 +288,7 @@ export async function runIngest(env: Env): Promise<RunResult> {
       if (hit) {
         ev.lat = hit[0];
         ev.lon = hit[1];
+        ev.geocoded_by = "gazetteer";
       }
     }
   }
@@ -277,11 +306,10 @@ export async function runIngest(env: Env): Promise<RunResult> {
   }
   base.kept = kept.length;
 
-  // 6. Append to the durable archive: one NDJSON blob per UTC day in KV.
-  // Swap this for R2 or Google Sheets later without touching anything else.
+  // 6. Append to the durable archive (KV, one NDJSON key per pipeline per day).
   if (kept.length) {
     try {
-      await archiveEvents(env.KV, kept);
+      await archiveEvents(env.KV, kept, pipeline);
     } catch (e) {
       base.archive_error = String(e).slice(0, 200);
     }

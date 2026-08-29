@@ -1,6 +1,6 @@
 name = "uwl-api"
 main = "src/index.ts"
-compatibility_date = "2025-01-15"
+compatibility_date = "2026-08-01"
 workers_dev = false
 
 [[routes]]
@@ -23,5 +23,9 @@ service = "uwl-ingest-ground"
 [[services]]
 binding = "INGEST_FRONTLINE"
 service = "uwl-ingest-frontline"
+
+[[services]]
+binding = "INGEST_SITREP"
+service = "uwl-sitrep"
 
 # Secret (set once): wrangler secret put RUN_KEY --config workers/api/wrangler.toml

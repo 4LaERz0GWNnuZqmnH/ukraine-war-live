@@ -1,6 +1,6 @@
 name = "uwl-ingest-frontline"
 main = "src/index.ts"
-compatibility_date = "2025-01-15"
+compatibility_date = "2026-08-01"
 workers_dev = false
 
 # DeepStateMap updates a few times a day; refresh every 6 hours (UTC).

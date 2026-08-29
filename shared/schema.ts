@@ -1,4 +1,4 @@
-// Event schema, validation, and Google Sheet mapping — shared by all workers.
+// Event schema and validation — shared by all workers.
 
 export type ConfidenceTier =
   | "high"
@@ -33,6 +33,7 @@ export interface WarEvent {
   country: string;
   lat: number | null;
   lon: number | null;
+  geocoded_by: "model" | "gazetteer" | null;
   confidence_tier: ConfidenceTier;
   actor_from: string;
   actor_to: string;
@@ -43,13 +44,6 @@ export interface WarEvent {
   reported_by: string;
   run_id: string;
 }
-
-export const EVENT_COLUMNS = [
-  "id", "first_seen_utc", "event_utc", "event_type", "headline", "summary",
-  "location_name", "admin_region", "country", "lat", "lon", "confidence_tier",
-  "actor_from", "actor_to", "source_outlet", "source_url", "killed_reported",
-  "wounded_reported", "reported_by", "run_id",
-] as const;
 
 const TYPES = new Set<string>([
   "missile_strike", "drone_strike", "air_defense", "deep_strike_ru", "naval",
@@ -63,21 +57,6 @@ const TIERS = new Set<string>([
 // Rough bounding box: Ukraine + Black Sea + western/central Russia (deep strikes
 // reach refineries as far as Tatarstan). Anything outside is treated as no-geo.
 const BBOX = { latMin: 40, latMax: 63, lonMin: 18, lonMax: 66 };
-
-export function tabForType(t: EventType): "strikes" | "ground" | "casualties" | "diplomacy" {
-  if (t === "casualty_report") return "casualties";
-  if (t === "diplomatic" || t === "pow_exchange") return "diplomacy";
-  if (t === "ground_engagement" || t === "territorial_change") return "ground";
-  return "strikes";
-}
-
-export function eventToRow(e: WarEvent): string[] {
-  const rec = e as unknown as Record<string, unknown>;
-  return EVENT_COLUMNS.map((c) => {
-    const v = rec[c];
-    return v === null || v === undefined ? "" : String(v);
-  });
-}
 
 // FNV-1a — small, dependency-free, good enough for signatures / ids.
 export function fnv(s: string): string {
@@ -128,6 +107,7 @@ export function parseEvents(raw: unknown, runId: string): WarEvent[] {
       lat = null;
       lon = null;
     }
+    const geocoded_by = lat !== null ? "model" : null;
 
     const tier = TIERS.has(str(rec.confidence_tier))
       ? (str(rec.confidence_tier) as ConfidenceTier)
@@ -145,6 +125,7 @@ export function parseEvents(raw: unknown, runId: string): WarEvent[] {
       country: str(rec.country).slice(0, 60) || "Ukraine",
       lat,
       lon,
+      geocoded_by,
       confidence_tier: tier,
       actor_from: str(rec.actor_from).slice(0, 80),
       actor_to: str(rec.actor_to).slice(0, 80),

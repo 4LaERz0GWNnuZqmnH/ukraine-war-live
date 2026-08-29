@@ -12,12 +12,15 @@
     "deploy:ground": "wrangler deploy --config workers/ingest-ground/wrangler.toml",
     "deploy:api": "wrangler deploy --config workers/api/wrangler.toml",
     "deploy:web": "wrangler pages deploy web --project-name=ukraine-war-live",
-    "deploy:all": "npm run deploy:strikes && npm run deploy:ground && npm run deploy:api && npm run deploy:web",
-    "typecheck": "tsc --noEmit"
+    "deploy:all": "npm run deploy:strikes && npm run deploy:ground && npm run deploy:frontline && npm run deploy:sitrep && npm run deploy:api && npm run deploy:web",
+    "typecheck": "tsc --noEmit",
+    "deploy:frontline": "wrangler deploy --config workers/ingest-frontline/wrangler.toml",
+    "deploy:sitrep": "wrangler deploy --config workers/sitrep/wrangler.toml",
+    "dev:sitrep": "wrangler dev --config workers/sitrep/wrangler.toml"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250109.0",
+    "@cloudflare/workers-types": "^5.0.0",
     "typescript": "^5.7.2",
-    "wrangler": "^3.99.0"
+    "wrangler": "^4.0.0"
   }
 }

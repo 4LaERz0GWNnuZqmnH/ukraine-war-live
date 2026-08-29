@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ukraine War Live — embed</title>
+  <meta name="robots" content="noindex" />
+  <link rel="stylesheet" href="/vendor/maplibre-gl.css?v=471" />
+  <link rel="stylesheet" href="/style.css?v=202608291200" />
+  <style>
+    body.embed header, body.embed footer, body.embed #sidebar,
+    body.embed #sbtoggle { display: none !important; }
+    body.embed main { position: absolute; inset: 0; }
+    body.embed #scrubber { right: 12px; }
+    .embed-credit {
+      position: absolute; left: 8px; bottom: 8px; z-index: 6;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+      padding: 3px 8px; font: 11px system-ui, sans-serif;
+    }
+    .embed-credit a { color: var(--accent); }
+  </style>
+</head>
+<body class="embed">
+  <main>
+    <div id="map"></div>
+    <div id="map-msg" hidden></div>
+    <div id="oblast-tip" hidden></div>
+    <div id="scrubber">
+      <button id="playbtn" type="button">▶</button>
+      <input id="timeline" type="range" min="0" max="1000" value="1000" aria-label="Time" />
+      <span id="asof">live</span>
+      <button id="livebtn" type="button">live</button>
+    </div>
+    <a class="embed-credit" href="https://ukraine.bugg.club/" target="_blank" rel="noopener">Ukraine War Live ↗</a>
+  </main>
+  <script src="/vendor/maplibre-gl.js?v=471"></script>
+  <script src="/app.js?v=202608291200"></script>
+</body>
+</html>
