@@ -26,7 +26,7 @@ const TYPES = [
 const TYPE_LABEL = Object.fromEntries(TYPES);
 
 let ALL = [];
-let windowHrs = 24;
+let windowHrs = 12;
 let asOf = null; // null = live; otherwise epoch ms upper bound (time scrubber)
 const enabled = new Set(TYPES.map(([t]) => t));
 const tierOn = new Set(Object.keys(TIER));
