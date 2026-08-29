@@ -10,7 +10,9 @@ DeepStateMap front line and a daily situation report.
 [methodology](https://ukraine.bugg.club/pages/methodology.html) ·
 [build write-up](https://ukraine.bugg.club/pages/build.html)
 
-Everything runs on Cloudflare free tiers — the only cost is the domain.
+Everything runs on Cloudflare free tiers — the only running cost is the
+~$15/year domain, plus the ~$200/year Claude Pro subscription used to build
+and maintain it (both figures as of August 2026).
 
 ## Layout
 

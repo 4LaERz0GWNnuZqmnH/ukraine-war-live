@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>How this site was built — Ukraine War Live</title>
-  <meta name="description" content="A detailed technical write-up of how Ukraine War Live is built: Cloudflare Workers, cron triggers, Workers AI extraction, KV storage, and a static MapLibre frontend, for under $10/month." />
+  <meta name="description" content="A detailed technical write-up of how Ukraine War Live is built: Cloudflare Workers, cron triggers, Workers AI extraction, KV storage, and a static MapLibre frontend, for essentially the price of a domain name." />
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608292130" />
+  <link rel="stylesheet" href="/style.css?v=202608292330" />
 </head>
 <body>
   <header>
@@ -42,9 +42,10 @@
       Ukraine War Live is an automated, serverless OSINT aggregator modelled on
       <a href="https://iranwarlive.com/methodology" target="_blank" rel="noopener">iranwarlive.com</a>.
       It has no back-end server and no database in the usual sense. Everything runs
-      on Cloudflare's edge platform, on free tiers, for a running cost of about
-      <strong>$0&ndash;1 per month</strong>. This page describes the whole system in
-      detail — enough to rebuild it.
+      on Cloudflare's edge platform, entirely within the free tiers, so the
+      infrastructure itself costs <strong>$0 / month</strong> to run; the only real
+      money is the domain and a Claude subscription (see section&nbsp;11). This page
+      describes the whole system in detail — enough to rebuild it.
     </p>
     <p>
       <strong>The entire project — architecture, every line of code, the
@@ -292,9 +293,16 @@
       <tr><td>KV writes</td><td>1,000 / day</td><td>~150 / day</td></tr>
       <tr><td>KV reads</td><td>100,000 / day</td><td>well under (edge-cached API)</td></tr>
       <tr><td>Pages</td><td>unlimited static requests</td><td>&mdash;</td></tr>
-      <tr><td>Domain</td><td>&mdash;</td><td>~$0.90 / month at cost</td></tr>
+      <tr><td>Domain (<code>bugg.club</code>)</td><td>&mdash;</td><td>$15 / year (~$1.25 / month)</td></tr>
+      <tr><td>Claude Pro &mdash; used to build &amp; maintain</td><td>&mdash;</td><td>~$200 / year</td></tr>
     </table>
-    <p>Everything runs inside the free tiers. The only hard money is the domain.</p>
+    <p>
+      Everything on Cloudflare runs inside the free tiers, so infrastructure is $0.
+      The only hard money is the <strong>$15/year</strong> domain and the
+      <strong>Claude&nbsp;Pro</strong> subscription used to build and keep the site
+      running, about <strong>$200/year</strong> &mdash; roughly <strong>$215 a year</strong>
+      all in. Figures as of August&nbsp;2026.
+    </p>
 
     <h2>12. Deployment</h2>
     <p>
