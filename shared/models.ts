@@ -21,19 +21,19 @@ export interface AiRunResult {
  * Call `ai.run` against each model in turn. Returns on the first that does not
  * throw; throws only if every model failed (message lists them all).
  */
+type AiRun = (model: string, input: unknown) => Promise<{ response?: unknown }>;
+
 export async function runWithFallback(
   ai: Ai,
   models: readonly string[],
   body: Record<string, unknown>,
 ): Promise<AiRunResult> {
-  const run = ai.run as unknown as (
-    model: string,
-    input: unknown,
-  ) => Promise<{ response?: unknown }>;
   const errors: string[] = [];
   for (const model of models) {
     try {
-      const out = await run(model, body);
+      // NB: must be called as a method of `ai` — a detached reference loses the
+      // `this` binding and the Workers AI SDK throws on its private fields.
+      const out = await (ai.run as unknown as AiRun).call(ai, model, body);
       return { response: out.response, model, errors };
     } catch (e) {
       errors.push(`${model}: ${String(e).slice(0, 160)}`);
