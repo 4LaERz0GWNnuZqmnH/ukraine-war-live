@@ -6,7 +6,11 @@
   <title>About — Ukraine War Live</title>
   <meta name="description" content="About Ukraine War Live: who built it, when, why, and how to get in touch." />
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608311000" />
+  <link rel="stylesheet" href="/style.css?v=202608311200" />
+  <style>
+    #stats-bars { display: flex; align-items: flex-end; gap: 2px; height: 60px; margin: 10px 0 4px; }
+    #stats-bars .b { flex: 1; min-width: 2px; background: var(--accent); opacity: .8; border-radius: 1px; }
+  </style>
 </head>
 <body>
   <header>
@@ -70,11 +74,16 @@
     <h2>What it is not</h2>
     <p>
       Not affiliated with any government, military, news organisation, or advocacy
-      group. No ads, no third-party trackers. Every event is an automated reading of
-      a public news headline and is unverified; casualty figures are numbers
+      group. No ads, no cookies, no third-party trackers. Every event is an automated
+      reading of a public news headline and is unverified; casualty figures are numbers
       announced by one side (Ukraine or Russia), not confirmed tolls. Treat it as a
       lead, not a fact.
     </p>
+
+    <h2>Site statistics</h2>
+    <p id="stats-line" class="muted">Loading…</p>
+    <div id="stats-bars" aria-hidden="true"></div>
+    <p class="src" id="stats-note"></p>
 
     <h2>Corrections &amp; source</h2>
     <p>
@@ -85,5 +94,39 @@
       The full source — everything Claude generated — is public there under CC BY-NC-SA 4.0.
     </p>
   </div>
+
+  <script>
+    (async () => {
+      const line = document.getElementById("stats-line");
+      const note = document.getElementById("stats-note");
+      const bars = document.getElementById("stats-bars");
+      try {
+        const s = await fetch("https://api.ukraine.bugg.club/stats").then((r) => r.json());
+        if (!s || s.collecting || !Array.isArray(s.days) || !s.days.length) {
+          line.textContent = "Being collected — check back in a couple of hours.";
+          return;
+        }
+        const n = (x) => Number(x || 0).toLocaleString();
+        line.innerHTML =
+          `<strong>${n(s.views_30d)}</strong> page views and about ` +
+          `<strong>${n(s.visitors_30d)}</strong> visitors over the last 30 days` +
+          (s.since ? ` (since ${s.since})` : "") + ".";
+        const days = s.days.slice(-30);
+        const max = Math.max(1, ...days.map((d) => d.visitors));
+        bars.innerHTML = days.map((d) =>
+          `<div class="b" style="height:${Math.max(3, Math.round(d.visitors / max * 100))}%" ` +
+          `title="${d.day}: ${d.visitors} visitors, ${d.views} views"></div>`).join("");
+        const upd = s.updated ? new Date(s.updated).toUTCString().replace("GMT", "UTC") : "";
+        note.textContent =
+          "“Visitors” is the count of distinct daily visitors, summed over the period " +
+          "(a regular reader is counted once per day). Tallied server-side from a daily-rotating " +
+          "hash — no cookies, no third-party scripts, the raw IP is never stored. " +
+          "Updated every 2 hours" + (upd ? ` · last ${upd}` : "") + ".";
+      } catch (e) {
+        line.textContent = "Statistics are unavailable right now.";
+      }
+    })();
+  </script>
+  <script src="/beacon.js" async></script>
 </body>
 </html>

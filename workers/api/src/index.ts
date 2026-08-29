@@ -1,5 +1,8 @@
 // Public read API. Serves the merged live feed, archive, front line, SITREPs and
-// machine-readable docs straight from KV. No writes (except the /admin/run relay).
+// machine-readable docs straight from KV. No writes (except the /admin/run relay
+// and the stats:summary aggregation).
+
+import { fnv } from "../../../shared/schema";
 
 interface Env {
   KV: KVNamespace;
@@ -8,6 +11,56 @@ interface Env {
   INGEST_FRONTLINE?: Fetcher;
   INGEST_SITREP?: Fetcher;
   RUN_KEY?: string;
+  AE?: AnalyticsEngineDataset;
+  CF_ACCOUNT_ID?: string;
+  CF_ANALYTICS_TOKEN?: string;
+}
+
+// Roll up the /hit datapoints (last 30 days) into stats:summary. Runs on cron.
+// Groups by (day, visitor-hash) and folds in JS so it only needs sum()/GROUP BY
+// — the aggregate-function subset that the Analytics Engine SQL API guarantees.
+async function aggregateStats(env: Env): Promise<void> {
+  if (!env.CF_ACCOUNT_ID || !env.CF_ANALYTICS_TOKEN) return;
+  const sql =
+    "SELECT formatDateTime(timestamp, '%Y-%m-%d') AS day, blob1 AS v, " +
+    "sum(_sample_interval) AS hits FROM uwl_hits " +
+    "WHERE timestamp > NOW() - INTERVAL '30' DAY " +
+    "GROUP BY day, blob1 ORDER BY day ASC LIMIT 20000";
+  const now = new Date().toISOString();
+  try {
+    const r = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
+      { method: "POST", headers: { authorization: `Bearer ${env.CF_ANALYTICS_TOKEN}` }, body: sql },
+    );
+    if (!r.ok) {
+      const t = await r.text();
+      await env.KV.put("stats:summary", JSON.stringify({ updated: now, error: `query ${r.status}: ${t.slice(0, 140)}` }));
+      return;
+    }
+    const d = (await r.json()) as { data?: Array<{ day: string; v: string; hits: number }> };
+    const byDay = new Map<string, { views: number; visitors: number }>();
+    for (const row of d.data || []) {
+      const e = byDay.get(row.day) || { views: 0, visitors: 0 };
+      e.views += Math.round(Number(row.hits) || 0);
+      e.visitors += 1;
+      byDay.set(row.day, e);
+    }
+    const days = [...byDay.entries()]
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([day, e]) => ({ day, views: e.views, visitors: e.visitors }));
+    await env.KV.put(
+      "stats:summary",
+      JSON.stringify({
+        updated: now,
+        days,
+        views_30d: days.reduce((a, x) => a + x.views, 0),
+        visitors_30d: days.reduce((a, x) => a + x.visitors, 0),
+        since: days.length ? days[0].day : null,
+      }),
+    );
+  } catch (e) {
+    await env.KV.put("stats:summary", JSON.stringify({ updated: now, error: String(e).slice(0, 140) }));
+  }
 }
 
 interface WarEventLite {
@@ -111,6 +164,26 @@ export default {
     const url = new URL(req.url);
 
     if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+    // ---- privacy-preserving hit beacon (POST, no cookies, fire-and-forget) --
+    if (req.method === "POST" && url.pathname === "/hit") {
+      try {
+        if (env.AE) {
+          const day = new Date().toISOString().slice(0, 10);
+          const ip = req.headers.get("cf-connecting-ip") || "";
+          const ua = req.headers.get("user-agent") || "";
+          const country = (req.cf?.country as string) || "";
+          const path = (url.searchParams.get("p") || "/").slice(0, 80);
+          // daily-rotating hash: dedupes within a day, cannot link across days,
+          // and the raw IP is never stored.
+          const vhash = fnv(`${day}|${ip}|${ua}|uwl-stats-v1`);
+          env.AE.writeDataPoint({ indexes: [day], blobs: [vhash, path, country], doubles: [1] });
+        }
+      } catch {
+        /* a beacon must never error */
+      }
+      return new Response(null, { status: 204, headers: CORS });
+    }
 
     // Edge cache for idempotent GETs (skips /admin/*).
     const cacheable = req.method === "GET" && !url.pathname.startsWith("/admin/");
@@ -365,10 +438,27 @@ ${items}
       return json(out, 0);
     }
 
+    if (url.pathname === "/admin/aggregate") {
+      if (!env.RUN_KEY || url.searchParams.get("key") !== env.RUN_KEY) {
+        return new Response("forbidden", { status: 403, headers: CORS });
+      }
+      await aggregateStats(env);
+      return json((await env.KV.get("stats:summary", "json")) || {}, 0);
+    }
+
+    if (url.pathname === "/stats") {
+      const s = await env.KV.get("stats:summary", "json");
+      return json(s || { collecting: true }, 3600);
+    }
+
     if (url.pathname === "/llms.txt") {
       return body(LLMS_TXT, "text/plain; charset=utf-8", 3600);
     }
 
     return new Response("Not found", { status: 404, headers: CORS });
+  },
+
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(aggregateStats(env));
   },
 };

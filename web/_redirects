@@ -3,6 +3,7 @@
 /feed.json       https://api.ukraine.bugg.club/feed.json        302
 /frontline.json  https://api.ukraine.bugg.club/frontline.json   302
 /status          https://api.ukraine.bugg.club/status           302
+/stats           https://api.ukraine.bugg.club/stats            302
 /llms.txt        https://api.ukraine.bugg.club/llms.txt         302
 /api/*           https://api.ukraine.bugg.club/api/:splat       302
 /archive/*       https://api.ukraine.bugg.club/archive/:splat   302

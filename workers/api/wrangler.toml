@@ -7,9 +7,22 @@ workers_dev = false
 pattern = "api.ukraine.bugg.club"
 custom_domain = true
 
+# Aggregate /hit datapoints into stats:summary every 2 hours (offset from the
+# ingest crons at :00 / :30).
+[triggers]
+crons = ["45 */2 * * *"]
+
+[vars]
+CF_ACCOUNT_ID = "c6e61d8cd829edc5b55ec99bb2b1e494"
+
 [[kv_namespaces]]
 binding = "KV"
 id = "3b271a52902c4e4f8c1bd5923f7938b0"
+
+# Privacy-preserving hit counter: one datapoint per page load, no cookies.
+[[analytics_engine_datasets]]
+binding = "AE"
+dataset = "uwl_hits"
 
 # Internal-only invocation of the cron workers (for POST /admin/run seeding).
 [[services]]
@@ -28,4 +41,7 @@ service = "uwl-ingest-frontline"
 binding = "INGEST_SITREP"
 service = "uwl-sitrep"
 
-# Secret (set once): wrangler secret put RUN_KEY --config workers/api/wrangler.toml
+# Secrets (set once):
+#   wrangler secret put RUN_KEY --config workers/api/wrangler.toml
+#   wrangler secret put CF_ANALYTICS_TOKEN --config workers/api/wrangler.toml
+#     ^ a Cloudflare API token with "Account Analytics: Read" (for the SQL query)
