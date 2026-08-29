@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Chronology — Ukraine War Live</title>
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608300100" />
+  <link rel="stylesheet" href="/style.css?v=202608301200" />
 </head>
 <body>
   <header>
@@ -162,8 +162,9 @@
         .forEach((e) => {
           const [c, lbl] = TIER[e.confidence_tier] || TIER.wire;
           const tr = document.createElement("tr");
+          const when = new Date(e.event_utc).toISOString().slice(0, 16).replace("T", " ");
           tr.innerHTML =
-            `<td>${new Date(e.event_utc).toISOString().slice(0, 16).replace("T", " ")}</td>` +
+            `<td><a href="/#event=${encodeURIComponent(e.id)}" title="Show on the map">${when}</a></td>` +
             `<td>${TYPE_LABEL[e.event_type] || e.event_type}</td>` +
             `<td>${esc(e.location_name || "")}${e.admin_region ? ", " + esc(e.admin_region) : ""}</td>` +
             `<td>${esc(e.headline)}<br><span style="color:var(--muted)">${esc(e.summary || "")}</span></td>` +

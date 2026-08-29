@@ -6,7 +6,7 @@
   <title>How this site was built — Ukraine War Live</title>
   <meta name="description" content="A detailed technical write-up of how Ukraine War Live is built: Cloudflare Workers, cron triggers, Workers AI extraction, KV storage, and a static MapLibre frontend, for essentially the price of a domain name." />
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608300100" />
+  <link rel="stylesheet" href="/style.css?v=202608301200" />
 </head>
 <body>
   <header>
@@ -139,7 +139,9 @@
         to Llama 3.3 70B at temperature 0.1 with a strict system prompt. The model
         is told to emit only a JSON array, to copy the exact <code>source_url</code>
         of the item an event came from, and to never guess coordinates. Output is
-        capped at 20 strike events / 12 ground events per run.
+        capped at 20 strike events / 12 ground events per run. If that model errors
+        (retired, overloaded, quota) the run falls back to a smaller Llama in
+        order; the model that actually answered is recorded in the run status.
       </li>
       <li>
         <strong>Validate.</strong> Every object is checked: known event type,
@@ -149,9 +151,11 @@
       </li>
       <li>
         <strong>Geocode fallback.</strong> For events the model left without
-        coordinates, a static gazetteer of ~110 places (all oblast centres,
-        front-line towns, Russian refinery/airfield cities) fills in a
-        settlement-centroid position. No geocoding API call.
+        coordinates, a gazetteer resolves the place name — a hand-curated table of
+        oblast centres, front-line towns and Russian refinery/airfield cities,
+        backed by ~6,000 populated places from open GeoNames data (rebuilt with
+        <code>npm run build:gazetteer</code>). Settlement-centroid precision, no
+        geocoding API call.
       </li>
       <li>
         <strong>Cross-run dedup.</strong> Each surviving event gets two signatures:
@@ -163,6 +167,13 @@
         centroid can never collapse two genuinely different reports. If either
         signature is already in the KV key <code>dedup_store</code> the event is
         dropped. That store is pruned by age (30 days) and hard-capped at 40k keys.
+      </li>
+      <li>
+        <strong>Corroboration.</strong> When a dropped duplicate comes from a
+        <em>different</em> outlet than the first report of that event, it counts
+        as independent corroboration. At two or more outlets the original event is
+        promoted to the <em>High confidence</em> tier in the live feed and the API
+        (the raw archive line keeps whatever tier it was written with).
       </li>
       <li>
         <strong>Archive.</strong> Kept events are appended as NDJSON — one JSON
@@ -187,7 +198,7 @@
     <p>Every event carries exactly one tier, which is the marker colour on the map.</p>
     <table>
       <tr><th>Tier</th><th>Meaning</th></tr>
-      <tr><td>High confidence</td><td>Same event from 2+ independent outlets in one run</td></tr>
+      <tr><td>High confidence</td><td>Same event from 2+ independent outlets — in one run, or promoted when a later run corroborates it</td></tr>
       <tr><td>Official — Ukraine</td><td>Attributed to Ukraine's General Staff, Air Force, or regional officials</td></tr>
       <tr><td>Official — Russia</td><td>Attributed to the Russian Ministry of Defence</td></tr>
       <tr><td>News wire</td><td>A single mainstream outlet, not attributed to either side</td></tr>

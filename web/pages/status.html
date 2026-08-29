@@ -6,7 +6,7 @@
   <title>Status — Ukraine War Live</title>
   <meta name="description" content="Live health of the Ukraine War Live pipeline: last run per worker, feed successes and failures, events per day." />
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608300100" />
+  <link rel="stylesheet" href="/style.css?v=202608301200" />
 </head>
 <body>
   <header>
@@ -50,7 +50,7 @@
     <div id="feeds"></div>
 
     <h2>Recent runs</h2>
-    <table><thead><tr><th>When</th><th>Pipeline</th><th>Items</th><th>Fresh</th><th>Extracted</th><th>Kept</th><th>Notes</th></tr></thead>
+    <table><thead><tr><th>When</th><th>Pipeline</th><th>Items</th><th>Fresh</th><th>Extracted</th><th>Kept</th><th>Model</th><th>Notes</th></tr></thead>
     <tbody id="runs"></tbody></table>
   </div>
 
@@ -94,9 +94,17 @@
         ? '<table><tbody>' + fails.map(([p, x]) => `<tr><td>${p}</td><td class="bad">${esc(x)}</td></tr>`).join("") + "</tbody></table>"
         : '<p class="ok">All feeds succeeded on the last run.</p>';
 
+      const shortModel = (m) => (m || "").replace(/^@cf\/[^/]+\//, "");
       document.getElementById("runs").innerHTML = (st.recent_runs || []).map((r) => {
-        const notes = [r.ai_error && "AI: " + r.ai_error, r.archive_error && "archive: " + r.archive_error, (r.feeds_failed || []).length && (r.feeds_failed.length + " feed fail")].filter(Boolean).join("; ");
-        return `<tr><td>${esc((r.run_id || "").slice(0, 16).replace("T", " "))}</td><td>${esc(r.pipeline)}</td><td>${r.items ?? ""}</td><td>${r.fresh ?? ""}</td><td>${r.extracted ?? ""}</td><td>${r.kept ?? ""}</td><td class="${notes ? "bad" : ""}">${esc(notes)}</td></tr>`;
+        const notes = [
+          r.ai_error && "AI: " + r.ai_error,
+          r.archive_error && "archive: " + r.archive_error,
+          (r.model_errors || []).length && "model fallback",
+          r.promoted && (r.promoted + " promoted"),
+          (r.feeds_failed || []).length && (r.feeds_failed.length + " feed fail"),
+        ].filter(Boolean).join("; ");
+        const bad = r.ai_error || r.archive_error || (r.feeds_failed || []).length;
+        return `<tr><td>${esc((r.run_id || "").slice(0, 16).replace("T", " "))}</td><td>${esc(r.pipeline)}</td><td>${r.items ?? ""}</td><td>${r.fresh ?? ""}</td><td>${r.extracted ?? ""}</td><td>${r.kept ?? ""}</td><td>${esc(shortModel(r.model_used))}</td><td class="${bad ? "bad" : ""}">${esc(notes)}</td></tr>`;
       }).join("");
     }
     tick();

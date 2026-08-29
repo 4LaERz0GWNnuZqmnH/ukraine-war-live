@@ -42,6 +42,7 @@ let showOblasts = false;
 let BLOGS = null;
 let OBLASTS = null;
 let playTimer = null;
+let pendingFocus = null; // event id from #event=… to fly to once data + map are ready
 
 const fc = (features) => ({ type: "FeatureCollection", features });
 
@@ -65,6 +66,7 @@ function applyUrlParams() {
 
 function init() {
   applyUrlParams();
+  pendingFocus = readEventHash();
   buildLegend();
   buildLayers();
   buildTiers();
@@ -73,6 +75,7 @@ function init() {
   wireSidebarToggle();
   wireScrubber();
   wireHistoryCompare();
+  wirePermalink();
   load();
   loadFrontline();
   loadBlogs();
@@ -182,7 +185,11 @@ function initMap() {
           "circle-opacity": 0.92,
         },
       });
-      map.on("click", "events", (e) => popup(e.features[0].geometry.coordinates, popupHtml(e.features[0].properties)));
+      map.on("click", "events", (e) => {
+        const p = e.features[0].properties;
+        popup(e.features[0].geometry.coordinates, popupHtml(p));
+        if (p.id) history.replaceState(null, "", "#event=" + p.id);
+      });
       map.on("click", "clusters", (e) => zoomCluster("events", e));
 
       // blogs — own teal clustering, on top
@@ -220,6 +227,7 @@ function initMap() {
       renderHistory();
       renderBlogs();
       renderOblasts();
+      maybeFocusEvent();
     });
   } catch (e) {
     console.warn("map init failed", e);
@@ -228,7 +236,68 @@ function initMap() {
 }
 
 function popup(lngLat, html) {
-  new maplibregl.Popup({ maxWidth: "320px" }).setLngLat(lngLat).setHTML(html).addTo(map);
+  const pp = new maplibregl.Popup({ maxWidth: "320px" }).setLngLat(lngLat).setHTML(html).addTo(map);
+  pp.on("close", () => {
+    if (location.hash.indexOf("event=") !== -1) {
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+  });
+  return pp;
+}
+
+/* ------------------------------------------------------------ permalinks -- */
+
+function readEventHash() {
+  const m = (location.hash || "").match(/[#&]event=([A-Za-z0-9]{4,16})/);
+  return m ? m[1] : null;
+}
+
+// Called from load() and from the map "load" handler; fires once when both the
+// feed and the map are ready.
+function maybeFocusEvent() {
+  if (!pendingFocus || !mapReady || !ALL.length) return;
+  const e = ALL.find((x) => x.id === pendingFocus);
+  if (!e) return;
+  pendingFocus = null;
+  history.replaceState(null, "", "#event=" + e.id);
+
+  // Widen the time window if the linked event is older than the current one, so
+  // its marker is actually on the map.
+  const ageH = (Date.now() - Date.parse(e.event_utc)) / 3600000;
+  if (windowHrs !== 0 && Number.isFinite(ageH) && ageH > windowHrs) {
+    windowHrs = 0;
+    document.querySelectorAll("#windows button").forEach((x) =>
+      x.classList.toggle("on", Number(x.dataset.h) === 0));
+    renderSidebar(); renderMap();
+  }
+
+  if (e.lat == null || e.lon == null) {
+    showMapMsg("Linked event has no mapped location — find it in the list →");
+    return;
+  }
+  map.flyTo({ center: [e.lon, e.lat], zoom: Math.max(map.getZoom(), 9) });
+  map.once("moveend", () =>
+    popup([e.lon, e.lat], popupHtml({ ...e, approx: e.geocoded_by === "gazetteer" ? 1 : 0 })));
+}
+
+function wirePermalink() {
+  window.addEventListener("hashchange", () => {
+    const id = readEventHash();
+    if (id) { pendingFocus = id; maybeFocusEvent(); }
+  });
+  // "permalink" button inside an event popup → copy the shareable URL
+  document.addEventListener("click", (ev) => {
+    const b = ev.target.closest && ev.target.closest(".pop .pl");
+    if (!b || !b.dataset.id) return;
+    const url = location.origin + location.pathname + "#event=" + b.dataset.id;
+    const done = () => { b.textContent = "link copied ✓"; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done, done);
+    } else {
+      history.replaceState(null, "", "#event=" + b.dataset.id);
+      done();
+    }
+  });
 }
 function zoomCluster(src, e) {
   const f = map.queryRenderedFeatures(e.point, { layers: [src === "blogs" ? "blog-clusters" : "clusters"] })[0];
@@ -447,6 +516,7 @@ async function load() {
     ALL = Array.isArray(d.events) ? d.events : [];
     setFreshness(d.meta);
     renderSidebar(); renderMap();
+    maybeFocusEvent();
   } catch (err) {
     console.error("load failed", err);
     document.getElementById("freshness").textContent = "feed unavailable — retrying";
@@ -673,14 +743,21 @@ function popupHtml(p) {
     ? `<div class="meta">Reported: ${p.killed_reported || 0} killed, ${p.wounded_reported || 0} wounded — ${escapeHtml(p.reported_by || "unattributed")} (a claim)</div>` : "";
   const loc = escapeHtml([p.location_name, p.admin_region].filter(Boolean).join(", "))
     + (p.approx === 1 ? ' <span class="muted">(approx. location)</span>' : "");
+  const corr = Number(p.corroborations) >= 2
+    ? `<div class="meta">Corroborated by ${Number(p.corroborations)} independent outlets</div>` : "";
+  const pl = p.id
+    ? `<button type="button" class="pl" data-id="${escapeHtml(String(p.id))}">permalink</button>` : "";
   return `<div class="pop">
     <h3>${escapeHtml(p.headline)}</h3>
     <div class="meta">${TYPE_LABEL[p.event_type] || p.event_type} · ${loc} · ${when}</div>
     <span class="tier" style="background:${t.c}">${t.label}</span>
     <p>${escapeHtml(p.summary || "")}</p>
-    ${cas}
+    ${cas}${corr}
     <div class="meta">${escapeHtml(p.actor_from || "?")} &rarr; ${escapeHtml(p.actor_to || "?")}</div>
-    <a href="${escapeAttr(p.source_url)}" target="_blank" rel="noopener">${escapeHtml(p.source_outlet || "source")}</a>
+    <div class="popfoot">
+      <a href="${escapeAttr(p.source_url)}" target="_blank" rel="noopener">${escapeHtml(p.source_outlet || "source")}</a>
+      ${pl}
+    </div>
   </div>`;
 }
 function blogPopupHtml(p) {

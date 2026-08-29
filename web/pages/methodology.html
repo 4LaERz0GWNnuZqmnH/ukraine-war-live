@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Methodology — Ukraine War Live</title>
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608300100" />
+  <link rel="stylesheet" href="/style.css?v=202608301200" />
 </head>
 <body>
   <header>
@@ -61,16 +61,21 @@
         events and 12 ground events per run.</li>
       <li><b>Validation &amp; geocoding.</b> Malformed objects are dropped. Coordinates
         outside a Ukraine + western-Russia bounding box are nulled. For events the model
-        left without coordinates, a static gazetteer of ~110 places (oblast centres,
-        front-line towns, Russian target cities) fills in a settlement-centroid position.</li>
-      <li><b>Deduplication.</b> Two signatures per event — an exact source-URL hash, and
-        a second one that adapts to how good the coordinate is: for a model-supplied
-        point it is <code>event type + 0.1° grid cell + time bucket</code>; for a
-        gazetteer centroid or no coordinate it is <code>event type + normalised-headline
-        hash + time bucket</code>, so an approximate location cannot merge two genuinely
-        different reports. Buckets are 1&nbsp;hour, or 4&nbsp;hours for territorial change
-        and diplomacy. If either signature is already seen the event is dropped.
-        Signatures are kept for 30&nbsp;days, with a 40,000-key cap.</li>
+        left without coordinates, a fallback gazetteer resolves the place name: a small
+        hand-curated table of oblast centres, front-line towns and Russian target cities,
+        backed by ~6,000 populated places from open GeoNames data inside the map area.
+        Positions are settlement-centroid precision; no geocoding API is called.</li>
+      <li><b>Deduplication &amp; corroboration.</b> Two signatures per event — an exact
+        source-URL hash, and a second one that adapts to how good the coordinate is: for a
+        model-supplied point it is <code>event type + 0.1° grid cell + time bucket</code>;
+        for a gazetteer centroid or no coordinate it is <code>event type +
+        normalised-headline hash + time bucket</code>, so an approximate location cannot
+        merge two genuinely different reports. Buckets are 1&nbsp;hour, or 4&nbsp;hours for
+        territorial change and diplomacy. If either signature is already seen the event is
+        dropped — but if that duplicate is from a different outlet than the first report,
+        it counts as independent corroboration, and at 2+&nbsp;outlets the original event
+        is promoted to <b>High confidence</b>. Signatures are kept for 30&nbsp;days, with a
+        40,000-key cap.</li>
       <li><b>Archive.</b> Surviving events are appended as NDJSON — one JSON object per
         line — to a per-pipeline, per-day key in Cloudflare KV, with a running
         day&rarr;count index. This is the uncapped canonical record, downloadable at
@@ -84,7 +89,7 @@
     <p>Every event carries one tier, shown as the marker colour on the map.</p>
     <table>
       <tr><th>Tier</th><th>Meaning</th><th>Colour</th></tr>
-      <tr><td>High confidence</td><td>Same event reported by 2+ independent outlets in the same run</td><td>green</td></tr>
+      <tr><td>High confidence</td><td>Same event reported by 2+ independent outlets — in one run, or corroborated by a later run</td><td>green</td></tr>
       <tr><td>Official — Ukraine</td><td>Attributed to Ukraine's General Staff, Air Force, or regional officials</td><td>blue</td></tr>
       <tr><td>Official — Russia</td><td>Attributed to the Russian Ministry of Defence or government</td><td>violet</td></tr>
       <tr><td>News wire</td><td>A single mainstream outlet, not attributed to either side</td><td>amber</td></tr>

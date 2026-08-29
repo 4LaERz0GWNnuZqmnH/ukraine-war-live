@@ -44,10 +44,11 @@ npm run deploy:all                # or push to main and let CI do it
 ```
 
 CI needs repo secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts / KV / Pages /
-Workers AI edit, **no IP filter**) and `CLOUDFLARE_ACCOUNT_ID`. A one-off
-`wrangler kv namespace create` + pasting the id into `workers/*/wrangler.toml`
-is the only manual setup; `RUN_KEY` is set once per worker with
-`wrangler secret put`.
+Workers AI edit, **no IP filter**) and `CLOUDFLARE_ACCOUNT_ID`. For a fresh
+account, `npm run bootstrap` does the one-off setup in one go — creates the KV
+namespace, writes its id into every `workers/*/wrangler.toml`, deploys, and sets
+`RUN_KEY` on each worker. `npm run build:gazetteer` rebuilds the fallback
+place table from GeoNames.
 
 ## Rebuild it yourself / adapt to another conflict
 

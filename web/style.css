@@ -188,6 +188,12 @@ footer .warn { color: #f0a850; }
 .pop h3 { margin: 0 0 4px; font-size: 13px; }
 .pop .meta { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
 .pop .tier { display: inline-block; padding: 0 6px; border-radius: 8px; color: #0b0f19; font-weight: 700; font-size: 11px; }
+.pop .popfoot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
+.pop .pl {
+  background: none; border: 1px solid var(--line); color: var(--muted);
+  font: inherit; font-size: 11px; padding: 1px 7px; border-radius: 6px; cursor: pointer;
+}
+.pop .pl:hover { border-color: var(--accent); color: var(--fg); }
 
 /* generic content pages */
 .doc { max-width: 820px; margin: 0 auto; padding: 28px 20px 60px; }

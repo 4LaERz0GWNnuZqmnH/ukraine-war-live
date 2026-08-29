@@ -43,6 +43,8 @@ export interface WarEvent {
   wounded_reported: number | null;
   reported_by: string;
   run_id: string;
+  /** independent outlets seen for this event; set once it reaches 2 (tier -> high) */
+  corroborations?: number;
 }
 
 const TYPES = new Set<string>([

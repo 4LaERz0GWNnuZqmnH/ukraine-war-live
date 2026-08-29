@@ -1,7 +1,14 @@
 // Fallback geocoder: the LLM leaves lat/lon null for most events, so we resolve
-// a place name against a static table of Ukrainian oblast centres, front-line
-// towns, and Russian deep-strike target cities. Coordinates are [lat, lon],
-// settlement-centroid precision — good enough for a 0.5-degree map.
+// a place name against a static table of populated places. Coordinates are
+// [lat, lon], settlement-centroid precision — good enough for a 0.5-degree map.
+//
+// Two layers:
+//  - PLACES below: hand-curated oblast centres, front-line towns, Russian
+//    deep-strike targets, and common English/transliterated aliases. Always wins.
+//  - gazetteer.data.json: ~6k populated places (GeoNames "cities1000", inside the
+//    map bbox), rebuilt with `node scripts/build-gazetteer.mjs`. Fills the gaps.
+
+import GEN from "./gazetteer.data.json";
 
 type LL = [number, number];
 
@@ -72,6 +79,12 @@ const PLACES: Record<string, LL> = {
   "st petersburg": [59.9311, 30.3609], "pskov": [57.8194, 28.3320],
 };
 
+// Generated places first, hand table second so PLACES overrides on any collision.
+const TABLE: Record<string, LL> = {
+  ...(GEN as unknown as Record<string, LL>),
+  ...PLACES,
+};
+
 function norm(s: string): string {
   return s
     .toLowerCase()
@@ -87,11 +100,13 @@ function norm(s: string): string {
 export function geocode(name: string | null | undefined): LL | null {
   if (!name) return null;
   const whole = norm(name);
-  if (PLACES[whole]) return PLACES[whole];
+  if (TABLE[whole]) return TABLE[whole];
   for (const part of whole.split(",")) {
     const p = part.trim();
-    if (PLACES[p]) return PLACES[p];
+    if (TABLE[p]) return TABLE[p];
   }
+  // Prefix / suffix match, but only against the curated table — the generated
+  // set is large and loose matches there produce confident-looking mistakes.
   for (const key of Object.keys(PLACES)) {
     if (whole === key || whole.startsWith(key + " ") || whole.endsWith(" " + key)) {
       return PLACES[key];

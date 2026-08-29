@@ -72,7 +72,8 @@ recorded.
 | File | Change |
 | --- | --- |
 | `shared/sources.json` | Replace the `feeds` array with the operator's feed URLs. Keep the `{name, url, pipeline}` shape. `pipeline` is `strikes`, `ground`, or `both`. |
-| `shared/gazetteer.ts` | Replace `PLACES` with settlements/regions for the new theatre (name → `[lat, lon]`), including common aliases and transliterations. This is hand-built data; there is no generator. |
+| `shared/gazetteer.ts` | Replace `PLACES` (the hand-curated table — oblast centres, front-line towns, aliases/transliterations). It always wins over the generated set. |
+| `shared/gazetteer.data.json` | The ~6k-place fallback. Regenerate with `node scripts/build-gazetteer.mjs` after editing `COUNTRY_RULES` / `BBOX` in that script for the new theatre. |
 | `shared/schema.ts` | Set `BBOX` to the operator's bounding box. Review the `event_type` enum — rename/extend for the conflict if needed, and keep `prompts.ts` in sync. |
 | `shared/prompts.ts` | Update the actor framing (who attacks whom), the place-name examples, and any Ukraine/Russia-specific tier rules. Keep the "never invent URLs/coordinates", temperature, and strict-JSON-schema instructions **verbatim**. |
 | `shared/frontline.ts` | Only if the control-map source changes. Swap the fetch URLs and the feature filter. If dropping the layer, also remove the `ingest-frontline` worker and its `[[services]]` binding in `workers/api`. |
@@ -89,8 +90,12 @@ The pipeline mechanics are conflict-agnostic — keep them unless you have a
 specific reason:
 
 - `shared/pipeline.ts` — fetch → parse → age-filter → AI extract → validate →
-  geocode → **two-signature dedup** (URL hash + adaptive grid/headline hash,
-  1h/4h buckets, 30-day TTL, 40k-key cap) → KV archive + live cache.
+  geocode → **two-signature dedup + corroboration** (URL hash + adaptive
+  grid/headline hash, 1h/4h buckets, 30-day TTL, 40k-key cap; a duplicate from a
+  different outlet promotes the original to `high`) → KV archive + live cache.
+- `shared/models.ts` — the ordered Workers AI model list. The pipeline and SITREP
+  try them in turn; a per-worker `MODEL` var (optional) is tried first. Adjust the
+  list if Cloudflare retires a model.
 - `shared/rss.ts` — the regex RSS/Atom parser (Workers have no XML DOM).
 - The worker scaffolding and `workers/api` routing.
 - One KV namespace for everything. Key families:
@@ -108,17 +113,20 @@ specific reason:
 npm ci
 npm run typecheck
 
-# one KV namespace for everything
-npx wrangler kv namespace create KV
-#   → paste the returned id into the [[kv_namespaces]] block of ALL five
-#     workers/*/wrangler.toml
+# one command: creates the KV namespace, writes its id into every
+# workers/*/wrangler.toml, deploys the 5 Workers + Pages, sets RUN_KEY on each.
+# Needs `wrangler login` or CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID.
+npm run bootstrap
+```
 
-# per-worker run key (guards POST /run and /admin/run)
+Or do it by hand:
+
+```bash
+npx wrangler kv namespace create KV        # paste id into all 5 wrangler.toml
 for w in ingest-strikes ingest-ground ingest-frontline sitrep api; do
-  npx wrangler secret put RUN_KEY --name uwl-$w   # use your own worker names
+  npx wrangler secret put RUN_KEY --config workers/$w/wrangler.toml
 done
-
-npm run deploy:all        # 5 workers + Pages; or push to main and let CI do it
+npm run deploy:all                         # 5 Workers + Pages; CI does this on push to main
 ```
 
 Then, in the Cloudflare dashboard or via API:

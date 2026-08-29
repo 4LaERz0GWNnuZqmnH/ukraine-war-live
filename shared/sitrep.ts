@@ -2,8 +2,7 @@
 // neutral digest. Cheap (one ~200-neuron call/day, well inside the free tier).
 
 import { WarEvent } from "./schema";
-
-const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+import { AI_MODELS, runWithFallback } from "./models";
 
 const PROMPT = `
 You are a neutral wire editor. Input is a JSON array of machine-extracted events
@@ -32,6 +31,7 @@ export interface Sitrep {
   bullets: string[];
   event_count: number;
   generated: string;
+  model?: string;
 }
 
 function slim(e: WarEvent) {
@@ -79,20 +79,21 @@ export async function generateSitrep(
   if (!events.length) {
     return { date, headline: "No events recorded for this day.", bullets: [], event_count: 0, generated };
   }
-  const out = (await ai.run(MODEL, {
+  const res = await runWithFallback(ai, AI_MODELS, {
     messages: [
       { role: "system", content: PROMPT },
       { role: "user", content: JSON.stringify(events.map(slim)) },
     ],
     temperature: 0.2,
     max_tokens: 1200,
-  })) as { response?: unknown };
-  const { headline, bullets } = coerce(out.response);
+  });
+  const { headline, bullets } = coerce(res.response);
   return {
     date,
     headline: headline || `${events.length} events recorded.`,
     bullets,
     event_count: events.length,
     generated,
+    model: res.model,
   };
 }

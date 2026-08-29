@@ -7,6 +7,7 @@ import { PROMPT_STRIKES, PROMPT_GROUND } from "./prompts";
 import { parseEvents, fnv, WarEvent } from "./schema";
 import { gridCell } from "./geo";
 import { geocode } from "./gazetteer";
+import { AI_MODELS, runWithFallback } from "./models";
 
 export interface Env {
   KV: KVNamespace;
@@ -21,7 +22,6 @@ type Pipeline = "strikes" | "ground";
 const MAX_AGE_MS = 96 * 3600 * 1000; // 4-day ingestion window
 const DEDUP_TTL_S = 30 * 24 * 3600;
 const MAX_ITEMS = 90;
-const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 interface FeedDef {
   name: string;
@@ -39,6 +39,9 @@ interface RunResult {
   fresh: number;
   extracted: number;
   kept: number;
+  promoted: number; // events promoted to "high" this run by fresh corroboration
+  model_used?: string;
+  model_errors?: string[]; // models that failed before the one that answered
   archive_error?: string;
   ai_error?: string;
 }
@@ -83,32 +86,43 @@ function normHeadline(s: string): string {
   return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
 }
 
+// A dedup-store entry. Legacy runs wrote a bare number (last-seen epoch seconds);
+// content signatures now carry the originating event so a later, independent
+// report of the same event can corroborate and promote it.
+interface DedupEntry {
+  t: number; // last-seen, epoch seconds
+  id: string; // event id of the first report
+  outlet: string; // most recent distinct outlet counted
+  tier: string; // current tier of the original event
+  n: number; // number of independent outlets seen for this event
+}
+type DedupVal = number | DedupEntry;
+const seenAt = (v: DedupVal): number => (typeof v === "number" ? v : v.t);
+
 // Two signatures per event; the event is a duplicate if either was already seen.
-//  - URL hash: catches the same article re-fetched.
-//  - The second depends on how good the coordinate is:
+//  - url: catches the same article re-fetched.
+//  - content depends on how good the coordinate is:
 //    * model-precise point  -> type + 0.1deg cell + time bucket (catches the same
 //      real event reported by different outlets within the hour).
 //    * gazetteer / no point  -> type + normalised-headline hash + time bucket
 //      (a coarse centroid must NOT collapse genuinely distinct events).
-function signatures(ev: WarEvent): string[] {
+function signatures(ev: WarEvent): { url: string; content: string } {
   const t = Date.parse(ev.event_utc) || Date.now();
   const windowH =
     ev.event_type === "territorial_change" || ev.event_type === "diplomatic" ? 4 : 1;
   const bucket = Math.floor(t / (windowH * 3600 * 1000));
-  const sigs = [`u:${fnv(ev.source_url)}`];
-  if (ev.lat !== null && ev.geocoded_by === "model") {
-    sigs.push(`g:${ev.event_type}:${gridCell(ev.lat, ev.lon, 0.1)}:${bucket}`);
-  } else {
-    sigs.push(`h:${ev.event_type}:${fnv(normHeadline(ev.headline))}:${bucket}`);
-  }
-  return sigs;
+  const content =
+    ev.lat !== null && ev.geocoded_by === "model"
+      ? `g:${ev.event_type}:${gridCell(ev.lat, ev.lon, 0.1)}:${bucket}`
+      : `h:${ev.event_type}:${fnv(normHeadline(ev.headline))}:${bucket}`;
+  return { url: `u:${fnv(ev.source_url)}`, content };
 }
 
-async function readMap(kv: KVNamespace, key: string): Promise<Record<string, number>> {
+async function readMap(kv: KVNamespace, key: string): Promise<Record<string, DedupVal>> {
   const raw = await kv.get(key);
   if (!raw) return {};
   try {
-    return JSON.parse(raw) as Record<string, number>;
+    return JSON.parse(raw) as Record<string, DedupVal>;
   } catch {
     return {};
   }
@@ -116,13 +130,13 @@ async function readMap(kv: KVNamespace, key: string): Promise<Record<string, num
 
 const DEDUP_MAX_KEYS = 40000; // hard cap so the blob never approaches KV's 25 MB limit
 
-function prune(map: Record<string, number>, nowS: number): void {
+function prune(map: Record<string, DedupVal>, nowS: number): void {
   for (const k of Object.keys(map)) {
-    if (nowS - map[k] > DEDUP_TTL_S) delete map[k];
+    if (nowS - seenAt(map[k]) > DEDUP_TTL_S) delete map[k];
   }
   const keys = Object.keys(map);
   if (keys.length > DEDUP_MAX_KEYS) {
-    keys.sort((a, b) => map[a] - map[b]); // oldest first
+    keys.sort((a, b) => seenAt(map[a]) - seenAt(map[b])); // oldest first
     for (let i = 0; i < keys.length - DEDUP_MAX_KEYS; i++) delete map[keys[i]];
   }
 }
@@ -236,6 +250,7 @@ export async function runIngest(env: Env): Promise<RunResult> {
     fresh: fresh.length,
     extracted: 0,
     kept: 0,
+    promoted: 0,
   };
 
   if (!fresh.length) {
@@ -255,19 +270,26 @@ export async function runIngest(env: Env): Promise<RunResult> {
     tier_hint: it.tier_hint,
   }));
 
+  // Try the configured model first (if any), then the shared fallback list.
+  const models = env.MODEL
+    ? [env.MODEL, ...AI_MODELS.filter((m) => m !== env.MODEL)]
+    : [...AI_MODELS];
+
   let rawEvents: unknown[] = [];
   try {
-    const out = (await env.AI.run(env.MODEL || DEFAULT_MODEL, {
+    const res = await runWithFallback(env.AI, models, {
       messages: [
         { role: "system", content: prompt },
         { role: "user", content: JSON.stringify(payload) },
       ],
       temperature: 0.1,
       max_tokens: 4096,
-    })) as { response?: unknown };
-    rawEvents = coerceEvents(out.response);
+    });
+    rawEvents = coerceEvents(res.response);
+    base.model_used = res.model;
+    if (res.errors.length) base.model_errors = res.errors;
   } catch (e) {
-    base.ai_error = String(e).slice(0, 200);
+    base.ai_error = String(e).slice(0, 300);
     await logRun(env.KV, base);
     await env.KV.put(`status:${pipeline}`, JSON.stringify(base));
     return base;
@@ -293,18 +315,58 @@ export async function runIngest(env: Env): Promise<RunResult> {
     }
   }
 
-  // 5. Cross-run dedup.
+  // 5. Cross-run dedup + corroboration.
+  //    A duplicate that comes from a DIFFERENT outlet than the first report is
+  //    counted as independent corroboration; at 2+ outlets the original event is
+  //    promoted to "high" (in the live feed / API — the raw archive line keeps
+  //    the tier it was written with).
   const dedup = await readMap(env.KV, "dedup_store");
   prune(dedup, nowS);
 
+  const promote = new Map<string, number>(); // event id -> corroboration count
   const kept: WarEvent[] = [];
   for (const ev of events) {
-    const sigs = signatures(ev);
-    if (sigs.some((s) => dedup[s])) continue;
-    for (const s of sigs) dedup[s] = nowS;
+    const sig = signatures(ev);
+    if (dedup[sig.url] != null) continue; // exact article already processed
+
+    const hit = dedup[sig.content];
+    if (hit != null) {
+      if (typeof hit === "object" && hit.outlet && ev.source_outlet &&
+          hit.outlet.toLowerCase() !== ev.source_outlet.toLowerCase()) {
+        hit.n = (hit.n || 1) + 1;
+        hit.outlet = ev.source_outlet; // a further distinct outlet still counts
+        hit.t = nowS;
+        if (hit.n >= 2) {
+          hit.tier = "high";
+          promote.set(hit.id, hit.n); // keep the count climbing on each new outlet
+        }
+      }
+      dedup[sig.url] = nowS;
+      continue; // still a duplicate — not re-added
+    }
+
+    // genuinely new
+    dedup[sig.url] = nowS;
+    dedup[sig.content] = {
+      t: nowS,
+      id: ev.id,
+      outlet: ev.source_outlet,
+      tier: ev.confidence_tier,
+      n: 1,
+    };
     kept.push(ev);
   }
+
+  // Same-run corroboration can land on an event we just kept.
+  for (const e of kept) {
+    const n = promote.get(e.id);
+    if (n) {
+      e.confidence_tier = "high";
+      e.corroborations = n;
+    }
+  }
   base.kept = kept.length;
+  base.promoted = promote.size;
 
   // 6. Append to the durable archive (KV, one NDJSON key per pipeline per day).
   if (kept.length) {
@@ -324,6 +386,14 @@ export async function runIngest(env: Env): Promise<RunResult> {
       prev = JSON.parse(prevRaw) as WarEvent[];
     } catch {
       prev = [];
+    }
+  }
+  // Apply cross-run promotions to events already in the live feed.
+  for (const e of prev) {
+    const n = promote.get(e.id);
+    if (n) {
+      e.confidence_tier = "high";
+      e.corroborations = n;
     }
   }
   const keptIds = new Set(kept.map((e) => e.id));
