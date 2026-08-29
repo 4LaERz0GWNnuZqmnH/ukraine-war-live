@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Chronology — Ukraine War Live</title>
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608292015" />
+  <link rel="stylesheet" href="/style.css?v=202608292130" />
 </head>
 <body>
   <header>
@@ -39,7 +39,7 @@
     <h1>Chronology</h1>
     <p style="color:var(--muted)">
       The live feed (last few days). Newest first. Automated &amp; unverified.
-      Last update <b id="updated">—</b>.
+      Last update <b id="updated">—</b> · next refresh in <b id="nextrefresh">—</b>.
     </p>
 
     <div class="filters">
@@ -111,6 +111,46 @@
       render();
     }
 
+    // Countdown to the next ingestion run: strikes fire at :00 and ground at :30
+    // of every even UTC hour, so new events reach /feed.json on that cadence.
+    // Only minutes are shown inside the final hour; before that it reads "~Nh".
+    const INGEST_ALLOWANCE_MS = 3 * 60 * 1000; // model + write lag after the cron
+    function nextIngestAt() {
+      const now = Date.now();
+      const base = new Date();
+      const cands = [];
+      for (let h = 0; h <= 3; h++) {
+        for (const m of [0, 30]) {
+          const t = new Date(base);
+          t.setUTCHours(base.getUTCHours() + h, m, 0, 0);
+          if (t.getUTCHours() % 2 === 0 && t.getTime() > now) cands.push(t.getTime());
+        }
+      }
+      return Math.min(...cands) + INGEST_ALLOWANCE_MS;
+    }
+    function fmtRemaining(ms) {
+      if (ms <= 0) return "any moment";
+      const min = Math.floor(ms / 60000);
+      if (min >= 60) return "~" + Math.floor(min / 60) + "h";
+      if (min >= 1) return min + "m";
+      return "<1m";
+    }
+    let refreshTarget = 0, refreshTimer = 0;
+    function tickCountdown() {
+      const el = document.getElementById("nextrefresh");
+      if (el && refreshTarget) el.textContent = fmtRemaining(refreshTarget - Date.now());
+    }
+    function scheduleRefresh() {
+      clearTimeout(refreshTimer);
+      refreshTarget = nextIngestAt();
+      tickCountdown();
+      refreshTimer = setTimeout(async () => {
+        try { await load(); } catch (e) { /* try again on the next cycle */ }
+        scheduleRefresh();
+      }, Math.max(1000, refreshTarget - Date.now()));
+    }
+    setInterval(tickCountdown, 15000);
+
     function render() {
       const t = document.getElementById("type").value;
       const tier = document.getElementById("tier").value;
@@ -132,7 +172,7 @@
           rows.appendChild(tr);
         });
     }
-    load();
+    load().catch(() => {}).finally(scheduleRefresh);
   </script>
 </body>
 </html>
