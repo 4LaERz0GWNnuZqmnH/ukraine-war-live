@@ -49,8 +49,26 @@ for (const file of files) {
   }
 }
 
-if (failed) {
-  console.error(`\n${failed} of ${checked} inline script block(s) failed to parse.`);
+// blogs.json is hand-edited and this repo is public, so a pull request could
+// slip in a `javascript:` URL that the Blogs page would render as a live href.
+// Scheme-check it here as well as at render time.
+let blogBad = 0;
+try {
+  const blogs = JSON.parse(readFileSync(resolve(WEB, "blogs.json"), "utf8")).blogs || [];
+  for (const b of blogs) {
+    if (typeof b.url !== "string" || !/^https:\/\/[^\s"'<>]+$/i.test(b.url)) {
+      blogBad++;
+      console.error(`✘ web/blogs.json: ${b.name || "(unnamed)"} has a non-https url: ${JSON.stringify(b.url)}`);
+    }
+  }
+  if (!blogBad) console.log(`blogs.json OK — ${blogs.length} entries, all https`);
+} catch (err) {
+  blogBad++;
+  console.error(`✘ web/blogs.json unreadable: ${err.message}`);
+}
+
+if (failed || blogBad) {
+  if (failed) console.error(`\n${failed} of ${checked} inline script block(s) failed to parse.`);
   process.exit(1);
 }
 console.log(`inline JS OK — ${checked} block(s) across ${files.length} page(s)`);

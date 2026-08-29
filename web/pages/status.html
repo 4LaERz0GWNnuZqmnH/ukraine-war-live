@@ -6,7 +6,7 @@
   <title>Status — Ukraine War Live</title>
   <meta name="description" content="Live health of the Ukraine War Live pipeline: last run per worker, feed successes and failures, events per day." />
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608312000" />
+  <link rel="stylesheet" href="/style.css?v=202608312200" />
 </head>
 <body>
   <header>
@@ -85,7 +85,7 @@
       const days = Object.keys(idx).sort().slice(-21);
       const max = Math.max(1, ...days.map((d) => idx[d]));
       document.getElementById("bars").innerHTML = days.map((d) =>
-        `<div class="bar" style="height:${Math.round((idx[d] / max) * 100)}%" title="${d}: ${idx[d]}"></div>`).join("");
+        `<div class="bar" style="height:${Math.round((Number(idx[d]) || 0) / max * 100)}%" title="${esc(d)}: ${Number(idx[d]) || 0}"></div>`).join("");
       document.getElementById("barsnote").textContent = days.length
         ? `${days[0]} → ${days[days.length - 1]} · peak ${max}/day` : "no archive yet";
 

@@ -79,11 +79,32 @@ interface WarEventLite {
   [k: string]: unknown;
 }
 
+// Deliberately open: this is a public read API meant to be consumed from
+// anywhere. Nothing behind it is authenticated by cookie, so `*` grants no
+// ambient authority. SEC_HEADERS ride along on every response.
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, OPTIONS",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
   "access-control-allow-headers": "content-type",
+  "x-content-type-options": "nosniff",
+  "strict-transport-security": "max-age=31536000; includeSubDomains",
+  "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
 };
+
+/** Length-independent string compare, so a wrong RUN_KEY leaks no timing signal. */
+function safeEqual(a: string | null, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  const enc = new TextEncoder();
+  const x = enc.encode(a);
+  const y = enc.encode(b);
+  // compare a fixed-size digest so differing lengths cost the same
+  let diff = x.length ^ y.length;
+  const n = Math.max(x.length, y.length);
+  for (let i = 0; i < n; i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
 
 const LLMS_TXT = `# ukraine-war-live
 
@@ -198,16 +219,35 @@ export default {
     }
 
     // Edge cache for idempotent GETs (skips /admin/*).
+    //
+    // The cache key is NORMALISED rather than using the raw request: only the
+    // params each endpoint actually reads are kept, lower-cased and sorted. Any
+    // other query string (`?cb=12345`) would otherwise mint a fresh cache entry
+    // and force a full KV re-read — /api/search costs ~93 reads, so a few
+    // thousand cache-busted requests could drain the daily read budget.
+    const READ_PARAMS: Record<string, string[]> = {
+      "/feed.json": ["type", "tier", "since"],
+      "/api/events": ["type", "tier", "since"],
+      "/api/search": ["q", "from", "to", "limit"],
+    };
     const cacheable = req.method === "GET" && !url.pathname.startsWith("/admin/");
     const cache = caches.default;
+    let cacheKey = req;
     if (cacheable) {
-      const hit = await cache.match(req);
+      const keep = READ_PARAMS[url.pathname];
+      const norm = new URL(url.origin + url.pathname);
+      for (const p of (keep || []).slice().sort()) {
+        const v = url.searchParams.get(p);
+        if (v !== null) norm.searchParams.set(p, v.trim().toLowerCase().slice(0, 128));
+      }
+      cacheKey = new Request(norm.toString(), { method: "GET" });
+      const hit = await cache.match(cacheKey);
       if (hit) return hit;
     }
 
     const finish = (resp: Response, maxAge: number): Response => {
       if (cacheable && maxAge > 0 && resp.status === 200) {
-        ctx.waitUntil(cache.put(req, resp.clone()));
+        ctx.waitUntil(cache.put(cacheKey, resp.clone()));
       }
       return resp;
     };
@@ -273,8 +313,10 @@ export default {
 
     // ---- archive search -----------------------------------------------------
     if (url.pathname === "/api/search") {
-      const q = (url.searchParams.get("q") || "").trim().toLowerCase();
-      if (q.length < 2) return json({ error: "q must be at least 2 characters", results: [] }, 0);
+      // Cap the term: no legitimate search is long, and an unbounded `q` is free
+      // work for an attacker on top of the ~93 KV reads each miss costs.
+      const q = (url.searchParams.get("q") || "").trim().toLowerCase().slice(0, 128);
+      if (q.length < 2) return json({ error: "q must be between 2 and 128 characters", results: [] }, 60);
       const to = url.searchParams.get("to") || new Date().toISOString().slice(0, 10);
       const from =
         url.searchParams.get("from") ||
@@ -447,11 +489,16 @@ ${items}
 
     // ---- admin relay -----------------------------------------------------
     if (url.pathname === "/admin/run") {
-      if (!env.RUN_KEY || url.searchParams.get("key") !== env.RUN_KEY) {
+      // POST only: this mutates state, and a GET would put RUN_KEY into browser
+      // history, Referer headers and any intermediary's access log.
+      if (req.method !== "POST") {
+        return new Response("method not allowed\n", { status: 405, headers: { ...CORS, allow: "POST" } });
+      }
+      if (!safeEqual(url.searchParams.get("key"), env.RUN_KEY)) {
         return new Response("forbidden", { status: 403, headers: CORS });
       }
       const which = url.searchParams.get("pipeline") || "both";
-      const key = encodeURIComponent(env.RUN_KEY);
+      const key = encodeURIComponent(env.RUN_KEY as string);
       const call = async (b: Fetcher | undefined, extra = "") =>
         b ? (await b.fetch(`https://internal/run?key=${key}${extra}`, { method: "POST" })).json() : "no binding";
       const out: Record<string, unknown> = {};
@@ -466,7 +513,10 @@ ${items}
     }
 
     if (url.pathname === "/admin/aggregate") {
-      if (!env.RUN_KEY || url.searchParams.get("key") !== env.RUN_KEY) {
+      if (req.method !== "POST") {
+        return new Response("method not allowed\n", { status: 405, headers: { ...CORS, allow: "POST" } });
+      }
+      if (!safeEqual(url.searchParams.get("key"), env.RUN_KEY)) {
         return new Response("forbidden", { status: 403, headers: CORS });
       }
       await aggregateStats(env);

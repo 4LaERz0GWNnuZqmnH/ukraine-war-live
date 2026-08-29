@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Chronology — Ukraine War Live</title>
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608312000" />
+  <link rel="stylesheet" href="/style.css?v=202608312200" />
 </head>
 <body>
   <header>
@@ -81,6 +81,13 @@
     };
     let ALL = [];
     const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    // href sink: escaping alone still permits javascript:/data: URLs, so the
+    // scheme is validated too. Anything else collapses to "#".
+    const escAttr = (s) => {
+      const v = String(s == null ? "" : s);
+      return /^https?:\/\//i.test(v) ? esc(v) : "#";
+    };
 
     const typeSel = document.getElementById("type");
     for (const [k, v] of Object.entries(TYPE_LABEL)) {
@@ -169,7 +176,7 @@
             `<td>${esc(e.location_name || "")}${e.admin_region ? ", " + esc(e.admin_region) : ""}</td>` +
             `<td>${esc(e.headline)}<br><span style="color:var(--muted)">${esc(e.summary || "")}</span></td>` +
             `<td><span style="color:${c};font-weight:700">${lbl}</span></td>` +
-            `<td><a href="${esc(e.source_url)}" target="_blank" rel="noopener">${esc(e.source_outlet || "link")}</a></td>`;
+            `<td><a href="${escAttr(e.source_url)}" target="_blank" rel="noopener">${esc(e.source_outlet || "link")}</a></td>`;
           rows.appendChild(tr);
         });
     }

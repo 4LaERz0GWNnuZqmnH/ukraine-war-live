@@ -6,7 +6,7 @@
   <title>Blogs — Ukraine War Live</title>
   <meta name="description" content="A hand-curated list of independent writers and newsletters covering the war in Ukraine, with links and short descriptions." />
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=202608312000" />
+  <link rel="stylesheet" href="/style.css?v=202608312200" />
 </head>
 <body>
   <header>
@@ -59,10 +59,17 @@
   <script>
     const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+    // href sink: escaping alone still permits javascript:/data: URLs, so the
+    // scheme is validated too. Anything else collapses to "#".
+    const escAttr = (s) => {
+      const v = String(s == null ? "" : s);
+      return /^https?:\/\//i.test(v) ? esc(v) : "#";
+    };
+
     function card(b) {
       const meta = [b.author, b.platform, b.place].filter(Boolean).map(esc).join(" &middot; ");
       return `<div class="blogcard">
-        <h3><a href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.name)}</a></h3>
+        <h3><a href="${escAttr(b.url)}" target="_blank" rel="noopener">${esc(b.name)}</a></h3>
         <div class="meta">${meta}</div>
         <p>${esc(b.blurb)}</p>
       </div>`;
