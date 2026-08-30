@@ -24,19 +24,21 @@ workers/
   ingest-frontline/ cron 15 */6  — DeepStateMap current + history snapshots
   sitrep/           cron 10 4    — one AI call over yesterday's archive
   api/              read API on api.ukraine.bugg.club (edge-cached)
-web/           static site + self-hosted MapLibre (Cloudflare Pages)
-scripts/       nav.mjs (menu), build-gazetteer.mjs, bootstrap.mjs
-.github/workflows/deploy.yml   push to main → typecheck + deploy everything
+web/           static site + self-hosted MapLibre; minified to dist/ before deploy
+scripts/       nav.mjs (menu), build-web.mjs (minify), build-gazetteer.mjs,
+               bootstrap.mjs, check-inline-js.mjs (lint)
+.github/workflows/deploy.yml   push to main → check + deploy everything
 ```
 
 One Cloudflare KV namespace holds all state (live feed, per-day NDJSON archive,
-dedup signatures, front-line GeoJSON + snapshots, daily SITREPs, diagnostics).
+dedup signatures, front-line GeoJSON + snapshots, daily SITREPs, diagnostics,
+the aggregate page-view summary).
 
 ## Develop / deploy
 
 ```bash
 npm install                       # needs Node 22+ (wrangler 4)
-npm run check                     # tsc + frontend JS lint
+npm run check                     # tsc + frontend JS lint + web build (dist/)
 cp .dev.vars.example .dev.vars    # set RUN_KEY for the /run trigger
 npm run dev:strikes               # then: curl -XPOST localhost:8787/run
 
@@ -66,7 +68,8 @@ prompt framing, and branding).
 `/feed.json` · `/api/events?type=&tier=&since=` · `/api/search?q=&from=&to=` ·
 `/archive/index.json` · `/archive/<date>` · `/frontline.json` ·
 `/frontline/history[/<date>]` · `/sitrep[/<date>]` · `/rss.xml` · `/status` ·
-`/llms.txt` · `POST /admin/run?pipeline=&key=`
+`/stats` · `/llms.txt` · `POST /hit` (page-view beacon) ·
+`POST /admin/run?pipeline=&key=`
 
 ## Caveats
 
@@ -81,4 +84,4 @@ event as a lead, not a fact.
 
 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) — see
 [`LICENSE`](LICENSE). Third-party components (MapLibre GL, DeepStateMap data,
-OpenFreeMap/OSM, geoBoundaries) keep their own licences; see the build write-up.
+OpenFreeMap/OSM) keep their own licences; see the build write-up.

@@ -42,6 +42,7 @@
       A short daily situation report, written by a language model from that day's
       machine-extracted events — nothing else. Unverified; casualty figures are
       one side's claims. The newest report is on top; earlier days are kept below.
+      Next report in <b id="nextpost">—</b>, generated daily at 04:10&nbsp;UTC.
     </p>
     <div id="list"><p class="muted">Loading…</p></div>
   </div>
@@ -59,7 +60,7 @@
       </div>`;
     }
 
-    (async () => {
+    async function loadReports() {
       try {
         const idx = await fetch(`${API}/sitrep?t=${Date.now()}`, { cache: "no-store" }).then((r) => r.json());
         const dates = (idx.dates || []).slice(0, 21);
@@ -79,7 +80,43 @@
       } catch (e) {
         document.getElementById("list").innerHTML = '<p class="ok" style="color:#f0a850">Could not load reports: ' + esc(e) + "</p>";
       }
-    })();
+    }
+
+    // Countdown to the next SITREP. The worker fires once a day at 04:10 UTC;
+    // allow a few minutes for the model call and KV write. Only minutes show
+    // inside the final hour, otherwise it reads "~Nh".
+    const SITREP_ALLOWANCE_MS = 5 * 60 * 1000;
+    function nextSitrepAt() {
+      const now = Date.now();
+      const t = new Date();
+      t.setUTCHours(4, 10, 0, 0);
+      if (t.getTime() + SITREP_ALLOWANCE_MS <= now) t.setUTCDate(t.getUTCDate() + 1);
+      return t.getTime() + SITREP_ALLOWANCE_MS;
+    }
+    function fmtRemaining(ms) {
+      if (ms <= 0) return "any moment";
+      const min = Math.floor(ms / 60000);
+      if (min >= 60) return "~" + Math.floor(min / 60) + "h";
+      if (min >= 1) return min + "m";
+      return "<1m";
+    }
+    let postTarget = 0, postTimer = 0;
+    function tickPost() {
+      const el = document.getElementById("nextpost");
+      if (el && postTarget) el.textContent = fmtRemaining(postTarget - Date.now());
+    }
+    function schedulePost() {
+      clearTimeout(postTimer);
+      postTarget = nextSitrepAt();
+      tickPost();
+      postTimer = setTimeout(async () => {
+        try { await loadReports(); } catch (e) { /* retry next cycle */ }
+        schedulePost();
+      }, Math.max(1000, postTarget - Date.now()));
+    }
+    setInterval(tickPost, 30000);
+
+    loadReports().catch(() => {}).finally(schedulePost);
   </script>
   <script src="/beacon.js" async></script>
 </body>

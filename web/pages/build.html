@@ -71,7 +71,7 @@
         │                 Cloudflare KV  (one namespace)                    │
         │  live:strikes  live:ground   archive:&lt;pipeline&gt;:&lt;day&gt; (+ index)   │
         │  dedup_store  processed:&lt;pipeline&gt;  promotions  frontline:geojson  │
-        │  sitrep:&lt;date&gt;  status:*  runs_log                                 │
+        │  sitrep:&lt;date&gt;  stats:summary  status:*  runs_log                  │
         └───────────────────────────────┬──────────────────────────────────┘
                                         ▼
                     ┌──────────────────────────────────────────┐
@@ -246,16 +246,20 @@
       <tr><td><code>promotions</code></td><td>Event id &rarr; corroboration count, so a promotion found by one pipeline reaches the other's feed (7-day TTL)</td></tr>
       <tr><td><code>frontline:geojson</code>, <code>frontline:snap:&lt;date&gt;</code></td><td>Current + historical occupied-territory FeatureCollections</td></tr>
       <tr><td><code>sitrep:&lt;date&gt;</code>, <code>sitrep:index</code></td><td>Daily digests</td></tr>
+      <tr><td><code>stats:summary</code></td><td>Pre-aggregated 30-day page-view / visitor counts for the About page, rebuilt from Analytics Engine every 2 hours</td></tr>
       <tr><td><code>status:*</code>, <code>runs_log</code></td><td>Health / last-run diagnostics</td></tr>
     </table>
 
     <h2>8. The read API</h2>
     <p>
       <code>uwl-api</code> is the fifth Worker, on <code>api.ukraine.bugg.club</code>.
-      It has the KV binding and does no writes; idempotent GETs are cached at the
-      Cloudflare edge (<code>caches.default</code>). The ingest Workers have no
-      public URL at all — the API Worker invokes them for manual runs over a
-      <strong>service binding</strong> (Worker-to-Worker, no internet hop).
+      It has the KV binding and serves reads; idempotent GETs are cached at the
+      Cloudflare edge (<code>caches.default</code>). Its one write path is a cron
+      (every 2 hours) that folds the raw page-view data points from Cloudflare
+      Analytics Engine into the <code>stats:summary</code> KV key the About page
+      reads. The ingest Workers have no public URL at all — the API Worker invokes
+      them for manual runs over a <strong>service binding</strong> (Worker-to-Worker,
+      no internet hop).
     </p>
     <table>
       <tr><th>Endpoint</th><th>Returns</th></tr>
@@ -268,12 +272,19 @@
       <tr><td><code>GET /sitrep</code> · <code>/sitrep/YYYY-MM-DD</code></td><td>Index + latest digest · one digest</td></tr>
       <tr><td><code>GET /rss.xml</code></td><td>Last 50 events as RSS 2.0</td></tr>
       <tr><td><code>GET /status</code> · <code>/llms.txt</code></td><td>Pipeline health · machine-readable summary</td></tr>
+      <tr><td><code>GET /stats</code></td><td>Pre-aggregated 30-day page-view / visitor counts (JSON)</td></tr>
+      <tr><td><code>POST /hit</code></td><td>Page-view beacon — same-origin only, one Analytics Engine data point, 204</td></tr>
       <tr><td><code>POST /admin/run?pipeline=&amp;key=</code></td><td>Fire a pipeline now (key-gated)</td></tr>
     </table>
 
     <h2>9. The frontend</h2>
     <p>
-      Plain HTML, one CSS file, one JS file — no framework, no build step. MapLibre
+      Plain HTML, one CSS file, one JS file — no framework and no application
+      build. For deployment a small esbuild + html-minifier script
+      (<code>npm run build:web</code>) minifies <code>web/</code> into
+      <code>dist/</code> and rewrites every asset reference to a content hash, so a
+      redeploy can never serve a stale mix of old and new files; Pages publishes
+      <code>dist/</code>. MapLibre
       GL is served from the site itself (<code>web/vendor/</code>), not a CDN; the
       base map is OpenFreeMap's key-less "Liberty" style. The script plots markers
       coloured by confidence tier and offers filters by time window, event type and
@@ -288,6 +299,11 @@
       <code>/embed.html</code> for iframes. The feed refreshes every 10 minutes
       client-side; the data changes every 2 hours. A <code>_headers</code> file
       sets a Content-Security-Policy and the usual hardening headers.
+      Every page except the embed loads a tiny fire-and-forget beacon
+      (<code>beacon.js</code>) that POSTs only its path to <code>/hit</code>; the
+      counting is done server-side against a daily-rotating hash, with no cookies
+      and no client-side identifiers, and the 30-day totals are shown on the
+      <a href="/pages/about.html">About</a> page.
     </p>
 
     <h2>10. Hosting and DNS</h2>
@@ -302,8 +318,9 @@
     <table>
       <tr><th>Component</th><th>Free allowance</th><th>This site's usage</th></tr>
       <tr><td>Workers requests</td><td>100,000 / day</td><td>a few thousand</td></tr>
-      <tr><td>Cron Triggers</td><td>included</td><td>~29 invocations / day</td></tr>
+      <tr><td>Cron Triggers</td><td>included</td><td>~41 invocations / day</td></tr>
       <tr><td>Workers AI</td><td>10,000 neurons / day</td><td>~24 extraction calls + 1 SITREP / day</td></tr>
+      <tr><td>Analytics Engine (page-view stats)</td><td>free tier</td><td>~1 write / page view, ~12 aggregation queries / day</td></tr>
       <tr><td>KV writes</td><td>1,000 / day</td><td>~150 / day</td></tr>
       <tr><td>KV reads</td><td>100,000 / day</td><td>well under (edge-cached API)</td></tr>
       <tr><td>Pages</td><td>unlimited static requests</td><td>&mdash;</td></tr>
@@ -322,8 +339,10 @@
       Each Worker is a <code>wrangler.toml</code> plus a <code>src/index.ts</code>.
       Secrets (the manual-run key) are set once with <code>wrangler secret put</code>
       and survive redeploys. A GitHub Actions workflow (Node&nbsp;22, wrangler&nbsp;4)
-      runs a type-check and then <code>wrangler deploy</code> for each of the five
-      Workers and <code>wrangler pages deploy</code> for the site on every push to
+      runs a type-check, lints the frontend JS (including every inline page
+      script), and minifies <code>web/</code> into <code>dist/</code>, then runs
+      <code>wrangler deploy</code> for each of the five Workers and
+      <code>wrangler pages deploy dist</code> for the site on every push to
       <code>main</code>. Cron schedules are declared in the Worker configs and
       registered automatically on deploy.
     </p>

@@ -129,14 +129,14 @@
       <li><b>Cloudflare KV</b> (one namespace) — deduplication signatures and processed-URL
         set (30-day window, 40k-key cap), the 200-event live feed per pipeline, the
         per-pipeline per-day NDJSON archive, current + historical front-line GeoJSON,
-        the daily SITREPs, and run diagnostics.</li>
+        the daily SITREPs, the aggregate page-view summary, and run diagnostics.</li>
       <li><b>Caps</b> — 20 strikes/run, 12 ground/run, 200 events per pipeline in the live
         feed; the archive is uncapped.</li>
       <li><b>Machine-readable</b> — <code>/feed.json</code>, <code>/api/events</code>,
         <code>/api/search</code>, <code>/archive/index.json</code>,
         <code>/archive/&lt;date&gt;</code>, <code>/frontline.json</code>,
         <code>/frontline/history</code>, <code>/sitrep</code>, <code>/rss.xml</code>,
-        <code>/status</code>, <code>/llms.txt</code>.</li>
+        <code>/status</code>, <code>/stats</code>, <code>/llms.txt</code>.</li>
       <li>Full build details: <a href="/pages/build.html">How it's built</a>.</li>
     </ul>
 
@@ -145,8 +145,10 @@
       attacker, target, and location regardless of the source's alignment, and applies
       the same confidence rules to every side. There is no affiliation with any
       government, military, or advocacy organisation. There are no ads and no third-party
-      trackers. Only public officials and official spokespeople are named; no private
-      individuals.</p>
+      trackers; aggregate page-view counts are tallied first-party from a daily-rotating
+      hash — no cookies, no third-party scripts, and the raw IP is never stored — with the
+      totals published on the <a href="/pages/about.html">About</a> page. Only public
+      officials and official spokespeople are named; no private individuals.</p>
 
     <h2>8. Known limitations</h2>
     <ul>
