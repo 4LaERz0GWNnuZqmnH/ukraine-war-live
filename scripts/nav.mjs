@@ -20,7 +20,7 @@ function nav(cur) {
   return `<nav>
       <span class="navgroup">
         <a href="/"${c("map")}>Map</a>
-        <a href="/pages/today.html"${c("today")}>Today</a>
+        <a href="/pages/today.html"${c("today")}>Daily</a>
         <a href="/pages/chronology.html"${c("chronology")}>Chronology</a>
       </span>
       <span class="navsep">|</span>

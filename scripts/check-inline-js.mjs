@@ -3,8 +3,9 @@
 //   node scripts/check-inline-js.mjs
 //
 // `tsc` only covers workers/ and shared/, and the page scripts (Chronology's
-// countdown, Status, Today, the About stats block) are inline — so nothing was
-// catching a typo in them before deploy. This closes that gap with zero deps.
+// countdown, Status, the Daily page, the About stats block) are inline — so
+// nothing was catching a typo in them before deploy. This closes that gap with
+// zero deps.
 
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";

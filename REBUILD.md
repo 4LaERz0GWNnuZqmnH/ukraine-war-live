@@ -145,7 +145,7 @@ curl -s https://<api-host>/feed.json | jq '.events | length'
 ```
 
 Load the site: map tiles render, markers appear after the first run, the front
-line loads (if kept), the Today tab fills in after the first `sitrep` run.
+line loads (if kept), the Daily tab fills in after the first `sitrep` run.
 
 ## 6. Licence obligations you inherit
 
