@@ -59,6 +59,15 @@ const TIERS = new Set<string>([
 // reach refineries as far as Tatarstan). Anything outside is treated as no-geo.
 const BBOX = { latMin: 40, latMax: 63, lonMin: 18, lonMax: 66 };
 
+// Scope guard. A general news feed (Al Jazeera, BBC world) occasionally yields an
+// unrelated military strike — US-Iran, Israel-Gaza, India-Pakistan — that still
+// matches a strike event_type, so the model emits it. Keep an event only if a
+// belligerent of the Russia-Ukraine war is named somewhere in its country /
+// actor / headline text. Latin + Cyrillic spellings; a blank country already
+// defaults to "Ukraine" below, so this only ever drops explicitly foreign events.
+const IN_SCOPE =
+  /ukrain|russ|belarus|donbas|donets|luhans|lugans|crimea|sevastopol|zaporizh|kherson|kharkiv|\bkyiv\b|\bkiev\b|odesa|mykolaiv|wagner|\bdpr\b|\blpr\b|moscow|kremlin|україн|росі|російс|білорус|крим|донец|луган|москв/i;
+
 // FNV-1a — small, dependency-free, good enough for signatures / ids.
 export function fnv(s: string): string {
   let h = 0x811c9dc5;
@@ -114,6 +123,11 @@ export function parseEvents(raw: unknown, runId: string): WarEvent[] {
       ? (str(rec.confidence_tier) as ConfidenceTier)
       : "wire";
 
+    const country = str(rec.country).slice(0, 60) || "Ukraine";
+    const actor_from = str(rec.actor_from).slice(0, 80);
+    const actor_to = str(rec.actor_to).slice(0, 80);
+    if (!IN_SCOPE.test(`${country} ${actor_from} ${actor_to} ${headline}`)) continue;
+
     out.push({
       id: fnv(`${url}|${type}|${str(rec.location_name)}`),
       first_seen_utc: nowIso,
@@ -123,13 +137,13 @@ export function parseEvents(raw: unknown, runId: string): WarEvent[] {
       summary: str(rec.summary).slice(0, 280),
       location_name: str(rec.location_name).slice(0, 120),
       admin_region: str(rec.admin_region).slice(0, 120),
-      country: str(rec.country).slice(0, 60) || "Ukraine",
+      country,
       lat,
       lon,
       geocoded_by,
       confidence_tier: tier,
-      actor_from: str(rec.actor_from).slice(0, 80),
-      actor_to: str(rec.actor_to).slice(0, 80),
+      actor_from,
+      actor_to,
       source_outlet: str(rec.source_outlet).slice(0, 80),
       source_url: url,
       killed_reported: num(rec.killed_reported),

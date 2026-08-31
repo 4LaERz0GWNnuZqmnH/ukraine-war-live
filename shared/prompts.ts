@@ -7,6 +7,11 @@ of recent news items, each: {headline, summary, source_outlet, source_url, publi
 Output ONLY a JSON array of event objects. No prose, no markdown fences, no comments.
 
 Hard rules:
+- SCOPE: the Russia-Ukraine war ONLY. Emit an event only if Russia, Ukraine, or a
+  force fighting for either (DPR/LPR, Wagner, North Korean troops in Russia, etc.)
+  is the attacker or the target. REJECT any other conflict — US-Iran, Israel-Gaza,
+  India-Pakistan, Sudan, etc. — even when it is a missile, drone, or naval strike
+  that would otherwise fit an event_type below.
 - One object per DISTINCT, CONCRETE event. If an item reports no concrete event
   (analysis, opinion, round-up, anniversary), skip it.
 - NEVER invent source_url. Copy the exact source_url of the item the event came from.
