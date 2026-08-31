@@ -43,6 +43,49 @@ let pendingFocus = null; // event id from #event=… to fly to once data + map a
 
 const fc = (features) => ({ type: "FeatureCollection", features });
 
+/* A corner compass: the rose turns with the map bearing and tips back with
+   pitch; clicking it eases the view back to north, level. */
+class CompassControl {
+  onAdd(map) {
+    this._map = map;
+    const wrap = document.createElement("div");
+    wrap.className = "maplibregl-ctrl maplibregl-ctrl-group uwl-compass";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.title = "Reset bearing to north";
+    btn.setAttribute("aria-label", "Reset bearing to north");
+    btn.innerHTML =
+      '<span class="uwl-compass-rose" aria-hidden="true">' +
+        '<span class="uwl-compass-n">N</span>' +
+        '<svg viewBox="0 0 24 24" width="20" height="20" focusable="false">' +
+          '<polygon points="12,3.5 9.3,12 12,10.4 14.7,12" fill="#c0392b"/>' +
+          '<polygon points="12,20.5 9.3,12 12,13.6 14.7,12" fill="#9aa1a9"/>' +
+        "</svg>" +
+      "</span>";
+    btn.addEventListener("click", () =>
+      map.easeTo({ bearing: 0, pitch: 0, duration: 300 }),
+    );
+    this._rose = btn.querySelector(".uwl-compass-rose");
+    this._sync = () => {
+      this._rose.style.transform =
+        "rotateX(" + Math.min(map.getPitch(), 60) * 0.55 + "deg) rotateZ(" +
+        -map.getBearing() + "deg)";
+    };
+    map.on("rotate", this._sync);
+    map.on("pitch", this._sync);
+    this._sync();
+    wrap.appendChild(btn);
+    this._wrap = wrap;
+    return wrap;
+  }
+  onRemove() {
+    this._map.off("rotate", this._sync);
+    this._map.off("pitch", this._sync);
+    this._wrap.remove();
+    this._map = undefined;
+  }
+}
+
 document.addEventListener("DOMContentLoaded", init);
 
 function applyUrlParams() {
@@ -102,7 +145,8 @@ function initMap() {
           'Front line &copy; <a href="https://deepstatemap.live" target="_blank" rel="noopener">DeepStateMap.live</a> (CC BY-NC-SA)',
       },
     });
-    map.addControl(new maplibregl.NavigationControl(), "top-right");
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    map.addControl(new CompassControl(), "top-right");
     map.on("error", (e) => console.warn("map error", e && e.error));
     let painted = false;
     map.on("idle", () => (painted = true));
