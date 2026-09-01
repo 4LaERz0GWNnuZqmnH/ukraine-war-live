@@ -5,19 +5,29 @@ import { WarEvent } from "./schema";
 import { AI_MODELS, runWithFallback } from "./models";
 
 const PROMPT = `
-You are a neutral wire editor. Input is a JSON array of machine-extracted events
-from ONE day of the Russia-Ukraine war (each: type, tier, place, actor_from,
-actor_to, headline, summary, killed_reported, wounded_reported, reported_by).
+You are a neutral wire editor. Input is a JSON object with two keys:
+- "must_cover": the day's events with the highest reported casualties.
+- "events": every machine-extracted event from ONE day of the Russia-Ukraine war
+  (each: type, tier, place, actor_from, actor_to, headline, summary,
+  killed_reported, wounded_reported, reported_by).
 
-Write a short situation report. Output ONLY this JSON object, no prose or fences:
+Write a situation report. Output ONLY this JSON object, no prose or fences:
 {"headline": "<= 90 chars, the single most significant development of the day",
- "bullets": ["4 to 7 short factual points"]}
+ "bullets": ["5 to 9 short factual points"]}
 
 Rules:
 - Summarise ONLY what is in the input. Do not add outside knowledge or invent detail.
-- Group related events (air attacks & air defence; front-line ground action &
+- The headline is normally the strike or attack with the highest reported civilian
+  death toll, unless a clearly larger strategic development outweighs it.
+- EVERY event in "must_cover" must appear — in the headline or a bullet — with its
+  casualty figure and the place, attributed to whoever reported it. "must_cover"
+  is ranked purely by figure size and may include battlefield claims of enemy
+  losses; reflect those in a bullet, not necessarily the headline.
+- Then group the rest (air attacks & air defence; front-line ground action &
   territorial change; Ukrainian deep strikes inside Russia; energy infrastructure;
-  naval/Black Sea; diplomacy). One bullet per group that has activity.
+  naval/Black Sea; diplomacy): one bullet per group that has activity.
+- Add a separate bullet for any single locality hit repeatedly or with several
+  casualties that a group bullet would otherwise bury.
 - Name places and any explicit figures. Attribute claims to who made them
   ("Ukraine's Air Force said...", "Russia's MoD claimed..."). Casualty numbers are
   claims, never present them as confirmed.
@@ -65,7 +75,7 @@ function coerce(resp: unknown): { headline: string; bullets: string[] } {
   const o = (obj || {}) as { headline?: unknown; bullets?: unknown };
   const headline = typeof o.headline === "string" ? o.headline.slice(0, 140) : "";
   const bullets = Array.isArray(o.bullets)
-    ? o.bullets.filter((b) => typeof b === "string").map((b) => (b as string).slice(0, 300)).slice(0, 8)
+    ? o.bullets.filter((b) => typeof b === "string").map((b) => (b as string).slice(0, 300)).slice(0, 12)
     : [];
   return { headline, bullets };
 }
@@ -79,13 +89,22 @@ export async function generateSitrep(
   if (!events.length) {
     return { date, headline: "No events recorded for this day.", bullets: [], event_count: 0, generated };
   }
+  // The deadliest events, chosen deterministically so the model can't drop them.
+  const sev = (e: WarEvent) => (e.killed_reported ?? 0) * 1000 + (e.wounded_reported ?? 0);
+  const mustCover = [...events]
+    .filter((e) => sev(e) > 0)
+    .sort((a, b) => sev(b) - sev(a))
+    .slice(0, 4);
   const res = await runWithFallback(ai, AI_MODELS, {
     messages: [
       { role: "system", content: PROMPT },
-      { role: "user", content: JSON.stringify(events.map(slim)) },
+      {
+        role: "user",
+        content: JSON.stringify({ must_cover: mustCover.map(slim), events: events.map(slim) }),
+      },
     ],
     temperature: 0.2,
-    max_tokens: 1200,
+    max_tokens: 1500,
   });
   const { headline, bullets } = coerce(res.response);
   return {

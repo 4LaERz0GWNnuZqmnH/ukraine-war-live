@@ -101,12 +101,25 @@ interface DedupEntry {
 type DedupVal = number | DedupEntry;
 const seenAt = (v: DedupVal): number => (typeof v === "number" ? v : v.t);
 
+// Ukrainian / Russian Cyrillic -> Latin, so a place the model left in Cyrillic
+// ("Мила", "Куп'янськ") slugs to the same token as its transliterated form and
+// still collapses with an English-outlet report of the same place.
+const CYR: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "h", ґ: "g", д: "d", е: "e", є: "ie", ё: "e",
+  ж: "zh", з: "z", и: "y", і: "i", ї: "i", й: "i", к: "k", л: "l", м: "m",
+  н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "kh",
+  ц: "ts", ч: "ch", ш: "sh", щ: "shch", ъ: "", ы: "y", ь: "", э: "e",
+  ю: "iu", я: "ia",
+};
+const translit = (s: string): string =>
+  s.replace(/[Ѐ-ӿ]/g, (c) => (c in CYR ? CYR[c] : c));
+
 // A short place slug from the event's named location — "Kherson Oblast" -> "kherson",
 // "Pokrovsk district" -> "pokrovsk". Used to collapse coarse-located reports.
 function placeSlug(ev: WarEvent): string {
-  return (ev.location_name || ev.admin_region || "")
-    .toLowerCase()
+  return translit((ev.location_name || ev.admin_region || "").toLowerCase())
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/['\u2019\u02bc]/g, "") // keep "Kup'iansk" one token
     .replace(/\b(oblast|raion|region|district|city|of|the|near)\b/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
