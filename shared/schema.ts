@@ -59,6 +59,12 @@ const TIERS = new Set<string>([
 // reach refineries as far as Tatarstan). Anything outside is treated as no-geo.
 const BBOX = { latMin: 40, latMax: 63, lonMin: 18, lonMax: 66 };
 
+// Last day the pre-split flat `archive:<date>` key was ever written; the
+// per-pipeline `archive:<pipeline>:<date>` keys took over after this. Callers
+// that fan out per-day reads across the archive can skip the legacy key for
+// any date after this one — it will never exist there.
+export const LEGACY_ARCHIVE_CUTOFF = "2026-08-29";
+
 // Scope guard. A general news feed (Al Jazeera, BBC world) occasionally yields an
 // unrelated military strike — US-Iran, Israel-Gaza, India-Pakistan — that still
 // matches a strike event_type, so the model emits it. Keep an event only if a
@@ -129,7 +135,10 @@ export function parseEvents(raw: unknown, runId: string): WarEvent[] {
     if (!IN_SCOPE.test(`${country} ${actor_from} ${actor_to} ${headline}`)) continue;
 
     out.push({
-      id: fnv(`${url}|${type}|${str(rec.location_name)}`),
+      // headline included so two distinct events extracted from one article,
+      // of the same type at the same (or blank) place, don't collide and
+      // silently overwrite one another in the live-feed merge.
+      id: fnv(`${url}|${type}|${str(rec.location_name)}|${headline}`),
       first_seen_utc: nowIso,
       event_utc: isoOr(rec.event_utc, nowIso),
       event_type: type as EventType,

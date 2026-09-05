@@ -4,6 +4,7 @@ import {
   fetchHistoryList,
   HistoryEntry,
 } from "../../../shared/frontline";
+import { safeEqual } from "../../../shared/auth";
 
 interface Env {
   KV: KVNamespace;
@@ -110,12 +111,15 @@ async function run(env: Env): Promise<Record<string, unknown>> {
 
     await env.KV.put("frontline:snap:index", JSON.stringify(index));
     result.snapshots = Object.keys(index).sort();
-    return result;
   } catch (e) {
+    // Leave frontline:geojson / frontline:meta at their last-known-good state —
+    // a failed run must not make stale front-line data look freshly updated.
     result.error = String(e).slice(0, 200);
-    await env.KV.put("frontline:meta", JSON.stringify(result));
-    return result;
   }
+  // Recorded either way (success or failure), like status:strikes/status:ground,
+  // so an outage is visible on /status without touching frontline:meta.
+  await env.KV.put("status:frontline", JSON.stringify(result));
+  return result;
 }
 
 export default {
@@ -125,7 +129,7 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (req.method === "POST" && url.pathname === "/run") {
-      if (env.RUN_KEY && url.searchParams.get("key") !== env.RUN_KEY) {
+      if (!safeEqual(url.searchParams.get("key"), env.RUN_KEY)) {
         return new Response("forbidden", { status: 403 });
       }
       return Response.json(await run(env));

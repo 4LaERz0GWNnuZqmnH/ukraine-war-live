@@ -304,7 +304,12 @@ function readEventHash() {
 function maybeFocusEvent() {
   if (!pendingFocus || !mapReady || !ALL.length) return;
   const e = ALL.find((x) => x.id === pendingFocus);
-  if (!e) return;
+  if (!e) {
+    // Only the live feed is searched here, so give up rather than retry forever.
+    showMapMsg("Linked event not found — it may be older than what's currently shown.");
+    pendingFocus = null;
+    return;
+  }
   pendingFocus = null;
   history.replaceState(null, "", "#event=" + e.id);
 

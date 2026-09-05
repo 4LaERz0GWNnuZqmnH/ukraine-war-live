@@ -8,6 +8,7 @@ import { parseEvents, fnv, WarEvent } from "./schema";
 import { gridCell } from "./geo";
 import { geocode } from "./gazetteer";
 import { AI_MODELS, runWithFallback } from "./models";
+import { safeEqual } from "./auth";
 
 export interface Env {
   KV: KVNamespace;
@@ -95,11 +96,19 @@ function normHeadline(s: string): string {
 interface DedupEntry {
   t: number; // last-seen, epoch seconds
   id: string; // event id of the first report
-  outlet: string; // most recent distinct outlet counted
-  n: number; // number of independent outlets seen for this event
+  outlet?: string; // legacy shape (pre-outlet-set): single most-recent outlet
+  outlets?: string[]; // distinct non-blank outlets counted so far (lowercased)
+  n: number; // number of independent outlets counted for this event
 }
 type DedupVal = number | DedupEntry;
 const seenAt = (v: DedupVal): number => (typeof v === "number" ? v : v.t);
+
+// Reads either shape so old KV entries (single `outlet`) keep working until
+// they age out (30-day TTL); new entries only ever use `outlets`.
+function countedOutlets(hit: DedupEntry): Set<string> {
+  if (hit.outlets) return new Set(hit.outlets);
+  return new Set(hit.outlet ? [hit.outlet.toLowerCase()] : []);
+}
 
 // Ukrainian / Russian Cyrillic -> Latin, so a place the model left in Cyrillic
 // ("Мила", "Куп'янськ") slugs to the same token as its transliterated form and
@@ -391,12 +400,20 @@ export async function runIngest(env: Env): Promise<RunResult> {
 
     const hit = dedup[sig.content];
     if (hit != null) {
-      if (typeof hit === "object" && hit.outlet && ev.source_outlet &&
-          hit.outlet.toLowerCase() !== ev.source_outlet.toLowerCase()) {
-        hit.n = (hit.n || 1) + 1;
-        hit.outlet = ev.source_outlet; // a further distinct outlet still counts
-        hit.t = nowS;
-        if (hit.n >= 2) promote.set(hit.id, hit.n); // climbs with each new outlet
+      if (typeof hit === "object" && ev.source_outlet) {
+        // Count against the FULL set of outlets already credited, not just the
+        // most recent one — otherwise an A, B, A pattern counts 3 corroborating
+        // outlets instead of 2 (the second A only differs from "B").
+        const key = ev.source_outlet.toLowerCase();
+        const outlets = countedOutlets(hit);
+        if (!outlets.has(key)) {
+          outlets.add(key);
+          hit.outlets = [...outlets];
+          delete hit.outlet; // migrate off the legacy single-outlet shape
+          hit.n = (hit.n || 1) + 1;
+          hit.t = nowS;
+          if (hit.n >= 2) promote.set(hit.id, hit.n); // climbs with each new outlet
+        }
       }
       dedup[sig.url] = nowS;
       continue; // still a duplicate — not re-added
@@ -404,7 +421,12 @@ export async function runIngest(env: Env): Promise<RunResult> {
 
     // genuinely new
     dedup[sig.url] = nowS;
-    dedup[sig.content] = { t: nowS, id: ev.id, outlet: ev.source_outlet, n: 1 };
+    dedup[sig.content] = {
+      t: nowS,
+      id: ev.id,
+      outlets: ev.source_outlet ? [ev.source_outlet.toLowerCase()] : [],
+      n: 1,
+    };
     kept.push(ev);
   }
 
@@ -475,7 +497,7 @@ export async function runIngest(env: Env): Promise<RunResult> {
 export async function handleIngestFetch(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   if (req.method === "POST" && url.pathname === "/run") {
-    if (env.RUN_KEY && url.searchParams.get("key") !== env.RUN_KEY) {
+    if (!safeEqual(url.searchParams.get("key"), env.RUN_KEY)) {
       return new Response("forbidden", { status: 403 });
     }
     const result = await runIngest(env);

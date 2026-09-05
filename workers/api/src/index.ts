@@ -2,7 +2,8 @@
 // machine-readable docs straight from KV. No writes (except the /admin/run relay
 // and the stats:summary aggregation).
 
-import { fnv } from "../../../shared/schema";
+import { fnv, LEGACY_ARCHIVE_CUTOFF } from "../../../shared/schema";
+import { safeEqual } from "../../../shared/auth";
 
 interface Env {
   KV: KVNamespace;
@@ -92,19 +93,6 @@ const CORS: Record<string, string> = {
   "x-frame-options": "DENY",
   "referrer-policy": "no-referrer",
 };
-
-/** Length-independent string compare, so a wrong RUN_KEY leaks no timing signal. */
-function safeEqual(a: string | null, b: string | undefined): boolean {
-  if (!a || !b) return false;
-  const enc = new TextEncoder();
-  const x = enc.encode(a);
-  const y = enc.encode(b);
-  // compare a fixed-size digest so differing lengths cost the same
-  let diff = x.length ^ y.length;
-  const n = Math.max(x.length, y.length);
-  for (let i = 0; i < n; i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
-  return diff === 0;
-}
 
 const LLMS_TXT = `# ukraine-war-live
 
@@ -379,7 +367,10 @@ export default {
         days.flatMap((d) => [
           env.KV.get(`archive:strikes:${d}`),
           env.KV.get(`archive:ground:${d}`),
-          env.KV.get(`archive:${d}`), // legacy flat key
+          // legacy flat key: only ever written on/before the cutoff, so skip
+          // the guaranteed-empty read for every later date (~1/3 of this
+          // endpoint's KV reads on a full-span search).
+          d <= LEGACY_ARCHIVE_CUTOFF ? env.KV.get(`archive:${d}`) : Promise.resolve(null),
         ]),
       );
       let results: WarEventLite[] = [];
@@ -438,7 +429,7 @@ export default {
       const [s, g, legacy] = await Promise.all([
         env.KV.get(`archive:strikes:${d}`),
         env.KV.get(`archive:ground:${d}`),
-        env.KV.get(`archive:${d}`),
+        d <= LEGACY_ARCHIVE_CUTOFF ? env.KV.get(`archive:${d}`) : Promise.resolve(null),
       ]);
       const parts = [legacy, s, g].filter((x): x is string => !!x);
       if (!parts.length) return new Response("no archive for that date\n", { status: 404, headers: CORS });
@@ -522,10 +513,11 @@ ${items}
 
     // ---- status ------------------------------------------------------------
     if (url.pathname === "/status") {
-      const [s, g, f, snap, sit, runs] = await Promise.all([
+      const [s, g, f, fStatus, snap, sit, runs] = await Promise.all([
         env.KV.get("status:strikes", "json"),
         env.KV.get("status:ground", "json"),
         env.KV.get("frontline:meta", "json"),
+        env.KV.get("status:frontline", "json") as Promise<{ error?: string } | null>,
         env.KV.get("frontline:snap:index", "json") as Promise<Record<string, unknown> | null>,
         env.KV.get("sitrep:index", "json") as Promise<string[] | null>,
         env.KV.get("runs_log", "json"),
@@ -534,7 +526,12 @@ ${items}
         {
           strikes: s,
           ground: g,
+          // frontline: last SUCCESSFUL update ({updated, source_datetime,
+          // feature_count}) — never touched by a failed run, so it can't lie
+          // about freshness. frontline_status is the last attempt either way,
+          // for spotting an outage (mirrors status:strikes / status:ground).
           frontline: f,
+          frontline_status: fStatus,
           frontline_snapshots: snap ? Object.keys(snap).sort().reverse() : [],
           sitreps: Array.isArray(sit) ? sit.slice(0, 14) : [],
           recent_runs: Array.isArray(runs) ? runs.slice(0, 12) : [],

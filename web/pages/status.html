@@ -68,14 +68,18 @@
         ]);
       } catch (e) { document.getElementById("cards").innerHTML = '<div class="statcard"><div class="k">error</div><div class="v bad">offline</div></div>'; return; }
 
-      const card = (k, v, cls) => `<div class="statcard"><div class="k">${esc(k)}</div><div class="v ${cls || ""}">${v}</div></div>`;
-      const s = st.strikes || {}, g = st.ground || {}, f = st.frontline || {};
+      const card = (k, v, cls, title) =>
+        `<div class="statcard"${title ? ` title="${esc(title)}"` : ""}><div class="k">${esc(k)}</div><div class="v ${cls || ""}">${v}</div></div>`;
+      const s = st.strikes || {}, g = st.ground || {}, f = st.frontline || {}, fs = st.frontline_status || {};
       const feedBad = (s.feeds_failed || []).length + (g.feeds_failed || []).length;
       document.getElementById("cards").innerHTML = [
         card("strikes — last run", ago(s.run_id)),
         card("ground — last run", ago(g.run_id)),
         card("front line — updated", ago(f.updated)),
         card("front line features", f.feature_count ?? "—"),
+        // front line — last attempt can fail (DeepStateMap down) without
+        // touching "updated" above, so this is the only place an outage shows.
+        card("front line — last attempt", fs.error ? "error" : "ok", fs.error ? "bad" : "ok", fs.error || ""),
         card("feeds ok (last run)", (s.feeds_ok ?? "—") + " / " + ((s.feeds_ok || 0) + ((s.feeds_failed || []).length))),
         card("feed failures", feedBad, feedBad ? "bad" : "ok"),
         card("front-line snapshots", (st.frontline_snapshots || []).length),

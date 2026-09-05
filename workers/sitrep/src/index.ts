@@ -1,5 +1,6 @@
 import { generateSitrep, Sitrep } from "../../../shared/sitrep";
-import { WarEvent } from "../../../shared/schema";
+import { WarEvent, LEGACY_ARCHIVE_CUTOFF } from "../../../shared/schema";
+import { safeEqual } from "../../../shared/auth";
 
 interface Env {
   KV: KVNamespace;
@@ -13,7 +14,7 @@ async function readDayEvents(kv: KVNamespace, date: string): Promise<WarEvent[]>
   const [s, g, legacy] = await Promise.all([
     kv.get(`archive:strikes:${date}`),
     kv.get(`archive:ground:${date}`),
-    kv.get(`archive:${date}`), // pre-2026-08-29 flat key
+    date <= LEGACY_ARCHIVE_CUTOFF ? kv.get(`archive:${date}`) : Promise.resolve(null),
   ]);
   const events: WarEvent[] = [];
   for (const blob of [s, g, legacy]) {
@@ -61,7 +62,7 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (req.method === "POST" && url.pathname === "/run") {
-      if (env.RUN_KEY && url.searchParams.get("key") !== env.RUN_KEY) {
+      if (!safeEqual(url.searchParams.get("key"), env.RUN_KEY)) {
         return new Response("forbidden", { status: 403 });
       }
       const date = url.searchParams.get("date") || undefined;
